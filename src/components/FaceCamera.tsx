@@ -1,43 +1,53 @@
-// src/components/FaceCamera.tsx (FINAL FIXED VERSION)
+// src/components/FaceCamera.tsx (UPDATED WITH ATTENDANCE MODE)
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
-import { Button, Alert, Progress, Card, Typography, Space, message } from 'antd';
-import { Camera, UserCheck, UserX, CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { Button, Alert, Progress, Card, Typography, Space, message, Badge, Descriptions } from 'antd';
+import { Camera, UserCheck, UserX, CheckCircle, XCircle, AlertCircle, RefreshCw, Clock, GraduationCap, Building, BookOpen } from 'lucide-react';
 import { Student } from '../types/database';
+import { supabase } from '../lib/supabase';
 
 const { Title, Text } = Typography;
 
 interface FaceCameraProps {
-  mode: 'enrollment' | 'verification';
+  mode: 'enrollment' | 'verification' | 'attendance'; // Added 'attendance' mode
   student?: Student;
   eventId?: string;
+  sessionInfo?: {
+    facultyId?: string;
+    departmentId?: string;
+    level?: number;
+    courseCode?: string;
+  };
   onCapture?: (imageData: string) => void;
   onFaceDetected?: (faceData: any) => void;
   onVerificationComplete?: (result: any) => void;
   onEnrollmentComplete?: (result: any) => void;
+  onAttendanceComplete?: (result: any) => void; // New prop for attendance
 }
 
 const FaceCamera: React.FC<FaceCameraProps> = ({
   mode,
   student,
   eventId,
+  sessionInfo,
   onCapture,
   onFaceDetected,
   onVerificationComplete,
   onEnrollmentComplete,
+  onAttendanceComplete,
 }) => {
-  // FIX: Correct Webcam ref type
- const webcamRef = useRef<any>(null);
+  const webcamRef = useRef<any>(null);
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceQuality, setFaceQuality] = useState(0);
   const [enrollmentProgress, setEnrollmentProgress] = useState(0);
+  const [attendanceProgress, setAttendanceProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [lastResult, setLastResult] = useState<any>(null);
   const [cameraError, setCameraError] = useState<string>('');
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
 
-  // Video constraints for better camera quality
   const videoConstraints = {
     width: { ideal: 640 },
     height: { ideal: 480 },
@@ -45,7 +55,184 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     frameRate: { ideal: 30, max: 60 }
   };
 
-  // FIX 1: Declare handleEnrollment first (with useCallback)
+  // Get student count for current session
+  const getSessionStudentCount = useCallback(async () => {
+    if (!sessionInfo?.facultyId || !sessionInfo?.departmentId || !sessionInfo?.level) return 0;
+    
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('id', { count: 'exact' })
+        .eq('faculty_id', sessionInfo.facultyId)
+        .eq('department_id', sessionInfo.departmentId)
+        .eq('level', sessionInfo.level)
+        .eq('enrollment_status', 'enrolled');
+      
+      if (error) throw error;
+      return data?.length || 0;
+    } catch (error) {
+      console.error('Error getting student count:', error);
+      return 0;
+    }
+  }, [sessionInfo]);
+
+  // FIX 1: Updated handleAttendance function
+  const handleAttendance = useCallback(async (imageSrc: string) => {
+    setStatusMessage('Processing face for attendance...');
+    setAttendanceProgress(0);
+    
+    try {
+      // Step 1: Face detection (simulated)
+      setAttendanceProgress(20);
+      setStatusMessage('Step 1/4: Detecting face...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Step 2: Face recognition (simulated - replace with actual face matching)
+      setAttendanceProgress(50);
+      setStatusMessage('Step 2/4: Matching face with database...');
+      await new Promise(resolve => setTimeout(resolve, 1200));
+
+      // Step 3: Find student in database
+      setAttendanceProgress(70);
+      setStatusMessage('Step 3/4: Fetching student details...');
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Get student count for this session
+      const studentCount = await getSessionStudentCount();
+      
+      // Mock student data - replace with actual database query
+      const mockStudents = [
+        {
+          id: 'stud_001',
+          name: 'John Doe',
+          student_id: 'ABU24001',
+          matric_number: 'ABU24001',
+          faculty_code: 'SCI',
+          department_code: 'CSC',
+          program: 'Computer Science',
+          level: 200,
+          level_code: '200',
+          current_level: { code: '200', name: 'Level 200' },
+          department: { name: 'Computer Science' },
+          enrollment_status: 'enrolled' as const,
+          face_match_score: 92.5
+        },
+        {
+          id: 'stud_002', 
+          name: 'Jane Smith',
+          student_id: 'ABU24002',
+          matric_number: 'ABU24002',
+          faculty_code: 'ENG',
+          department_code: 'MEE',
+          program: 'Mechanical Engineering',
+          level: 300,
+          level_code: '300',
+          current_level: { code: '300', name: 'Level 300' },
+          department: { name: 'Mechanical Engineering' },
+          enrollment_status: 'enrolled' as const,
+          face_match_score: 87.3
+        },
+        {
+          id: 'stud_003',
+          name: 'Michael Johnson',
+          student_id: 'ABU24003',
+          matric_number: 'ABU24003',
+          faculty_code: 'SCI',
+          department_code: 'CSC',
+          program: 'Computer Science',
+          level: 200,
+          level_code: '200',
+          current_level: { code: '200', name: 'Level 200' },
+          department: { name: 'Computer Science' },
+          enrollment_status: 'enrolled' as const,
+          face_match_score: 95.1
+        }
+      ];
+
+      // Filter by session info if available
+      let filteredStudents = mockStudents;
+      if (sessionInfo?.facultyId) {
+        filteredStudents = filteredStudents.filter(s => 
+          s.faculty_code === (sessionInfo.facultyId?.includes('SCI') ? 'SCI' : 'ENG')
+        );
+      }
+      if (sessionInfo?.departmentId) {
+        filteredStudents = filteredStudents.filter(s => 
+          s.department_code === (sessionInfo.departmentId?.includes('CSC') ? 'CSC' : 'MEE')
+        );
+      }
+      if (sessionInfo?.level) {
+        filteredStudents = filteredStudents.filter(s => 
+          s.level === sessionInfo.level
+        );
+      }
+
+      // Randomly select a student for demo
+      const matchedStudent = filteredStudents.length > 0 
+        ? filteredStudents[Math.floor(Math.random() * filteredStudents.length)]
+        : mockStudents[0];
+      
+      const matchScore = matchedStudent.face_match_score || (85 + Math.random() * 15);
+
+      // Step 4: Save attendance record (simulated)
+      setAttendanceProgress(90);
+      setStatusMessage('Step 4/4: Saving attendance record...');
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      setAttendanceProgress(100);
+      
+      const result = {
+        success: true,
+        match: true,
+        student: matchedStudent,
+        confidence: matchScore / 100,
+        matchScore: matchScore,
+        image: imageSrc,
+        timestamp: new Date().toISOString(),
+        sessionInfo: {
+          totalStudents: studentCount,
+          courseCode: sessionInfo?.courseCode || 'N/A',
+          level: sessionInfo?.level || 'N/A'
+        },
+        message: `Attendance marked for ${matchedStudent.name} (${matchedStudent.matric_number})`,
+      };
+
+      setLastResult(result);
+      setAttendanceRecords(prev => [...prev, result]);
+      
+      // Play success sound
+      try {
+        const audio = new Audio('/success-beep.mp3'); // Add this sound file to public folder
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+      } catch (e) {}
+
+      message.success(`✅ ${matchedStudent.name} marked present!`);
+
+      if (onAttendanceComplete) {
+        onAttendanceComplete(result);
+      }
+
+    } catch (error: any) {
+      const errorResult = {
+        success: false,
+        match: false,
+        message: `Attendance failed: ${error.message}`,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setLastResult(errorResult);
+      message.error('Attendance marking failed. Please try again.');
+      
+      if (onAttendanceComplete) {
+        onAttendanceComplete(errorResult);
+      }
+    } finally {
+      setAttendanceProgress(0);
+    }
+  }, [sessionInfo, getSessionStudentCount, onAttendanceComplete]);
+
+  // FIX 2: Updated handleEnrollment function
   const handleEnrollment = useCallback(async (imageSrc: string) => {
     setStatusMessage('Starting face enrollment...');
     
@@ -57,18 +244,15 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       setEnrollmentProgress((currentStep / enrollmentSteps) * 100);
     };
 
-    // Step 1: Face detected
     updateProgress();
     setStatusMessage('Step 1/5: Face detected');
 
-    // Simulate multiple angle captures
     for (let i = 0; i < 3; i++) {
       setStatusMessage(`Step ${i + 2}/5: Capturing face angle ${i + 1}/3...`);
       await new Promise(resolve => setTimeout(resolve, 800));
       updateProgress();
     }
 
-    // Final processing
     setStatusMessage('Step 5/5: Creating face template...');
     await new Promise(resolve => setTimeout(resolve, 1500));
     updateProgress();
@@ -77,7 +261,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       success: true,
       studentId: student?.id,
       studentName: student?.name,
-      embedding: Array(512).fill(0).map(() => Math.random() - 0.5), // Simulated embedding
+      embedding: Array(512).fill(0).map(() => Math.random() - 0.5),
       quality: faceQuality,
       photoUrl: imageSrc,
       timestamp: new Date().toISOString(),
@@ -93,17 +277,15 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     }
   }, [faceQuality, student, onEnrollmentComplete]);
 
-  // FIX 2: Declare handleVerification second (with useCallback)
+  // FIX 3: Updated handleVerification function
   const handleVerification = useCallback(async (imageSrc: string) => {
     setStatusMessage('Verifying face...');
     
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Simulate verification with different results
-    const isMatch = Math.random() > 0.3; // 70% match rate for demo
+    const isMatch = Math.random() > 0.3;
     const confidence = isMatch ? 0.75 + Math.random() * 0.2 : 0.3 + Math.random() * 0.3;
 
-    // Handle student type safely
     const studentName = student?.name || 'John Student';
     const studentId = student?.student_id || student?.matric_number || 'ABU/2024/001';
     const studentLevel = student?.level_code || student?.current_level?.code || '300';
@@ -145,14 +327,12 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   }, [student, onVerificationComplete]);
 
   useEffect(() => {
-    // Check if we're on HTTPS
     const isHTTPS = window.location.protocol === 'https:';
     if (!isHTTPS && process.env.NODE_ENV === 'production') {
       setCameraError('Camera requires HTTPS in production. Please use HTTPS.');
     }
 
     return () => {
-      // Cleanup
       setIsCameraOn(false);
     };
   }, []);
@@ -161,16 +341,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     try {
       setStatusMessage('Requesting camera permission...');
       
-      // Request camera permission first
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: videoConstraints,
         audio: false 
       });
       
-      // Stop the stream immediately to avoid memory leaks
       stream.getTracks().forEach(track => track.stop());
       
-      // FIX 3: Removed setHasCameraPermission - use setIsCameraOn directly
       setIsCameraOn(true);
       setCameraError('');
       setStatusMessage('Camera started. Position your face in the frame.');
@@ -180,7 +357,6 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       setCameraError(`Camera access denied: ${error.message}`);
       setStatusMessage('Camera access denied. Please allow camera permissions.');
       
-      // Show specific error messages
       if (error.name === 'NotFoundError') {
         setCameraError('No camera found on this device.');
       } else if (error.name === 'NotAllowedError') {
@@ -197,7 +373,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     setStatusMessage('');
   };
 
-  // FIX 4: Now captureFace can reference handleEnrollment and handleVerification
+  // FIX 4: Updated captureFace function with attendance mode
   const captureFace = useCallback(async () => {
     if (!webcamRef.current || !isCameraOn) {
       setStatusMessage('Camera is not ready. Please start camera first.');
@@ -208,26 +384,23 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       setIsProcessing(true);
       setStatusMessage('Capturing face...');
 
-      // TypeScript now knows getScreenshot exists
       const imageSrc = webcamRef.current.getScreenshot();
       if (!imageSrc) {
         throw new Error('Failed to capture image. Try again.');
       }
 
-      // Show the captured image
       if (onCapture) {
         onCapture(imageSrc);
       }
 
-      // Simulate face detection (replace with actual face-api.js in production)
       setStatusMessage('Detecting face...');
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const hasFace = Math.random() > 0.1; // 90% success rate for demo
+      const hasFace = Math.random() > 0.1;
       
       if (hasFace) {
         setFaceDetected(true);
-        const quality = 0.7 + Math.random() * 0.25; // 70-95% quality
+        const quality = 0.7 + Math.random() * 0.25;
         setFaceQuality(quality);
         setStatusMessage(`Face detected! Quality: ${Math.round(quality * 100)}%`);
 
@@ -244,6 +417,8 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
           await handleEnrollment(imageSrc);
         } else if (mode === 'verification') {
           await handleVerification(imageSrc);
+        } else if (mode === 'attendance') {
+          await handleAttendance(imageSrc);
         }
       } else {
         setStatusMessage('No face detected. Please position your face clearly in the frame.');
@@ -257,7 +432,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [isCameraOn, mode, student, onCapture, onFaceDetected, handleEnrollment, handleVerification]);
+  }, [isCameraOn, mode, student, onCapture, onFaceDetected, handleEnrollment, handleVerification, handleAttendance]);
 
   const retryCamera = () => {
     setCameraError('');
@@ -265,24 +440,53 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     startCamera();
   };
 
+  // Get mode display title
+  const getModeTitle = () => {
+    switch (mode) {
+      case 'enrollment': return 'Face Enrollment';
+      case 'verification': return 'Face Verification';
+      case 'attendance': return 'Attendance Scanner';
+      default: return 'Face Camera';
+    }
+  };
+
+  // Get mode description
+  const getModeDescription = () => {
+    switch (mode) {
+      case 'enrollment': return 'Capture and enroll student face for future recognition';
+      case 'verification': return 'Verify student identity using face recognition';
+      case 'attendance': return 'Mark attendance using face recognition';
+      default: return '';
+    }
+  };
+
   return (
     <Card 
       title={
         <Space>
           <Camera size={20} />
-          <Text strong>{mode === 'enrollment' ? 'Face Enrollment' : 'Face Verification'}</Text>
+          <Text strong>{getModeTitle()}</Text>
         </Space>
       }
       style={{ maxWidth: 800, margin: '0 auto' }}
       extra={
         isCameraOn && (
-          <Button 
-            size="small" 
-            icon={<RefreshCw size={14} />}
-            onClick={retryCamera}
-          >
-            Retry Camera
-          </Button>
+          <Space>
+            {mode === 'attendance' && (
+              <Badge 
+                count={attendanceRecords.length} 
+                style={{ backgroundColor: '#52c41a' }}
+                title="Students marked"
+              />
+            )}
+            <Button 
+              size="small" 
+              icon={<RefreshCw size={14} />}
+              onClick={retryCamera}
+            >
+              Retry Camera
+            </Button>
+          </Space>
         )
       }
     >
@@ -308,9 +512,27 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
           <div style={{ padding: '40px 0' }}>
             <Camera size={64} style={{ marginBottom: 20, opacity: 0.5 }} />
             <Title level={4}>Camera Ready</Title>
-            <Text type="secondary">
-              Click "Start Camera" to begin {mode === 'enrollment' ? 'face enrollment' : 'face verification'}
-            </Text>
+            <Text type="secondary">{getModeDescription()}</Text>
+            
+            {/* Session info for attendance mode */}
+            {mode === 'attendance' && sessionInfo && (
+              <Card size="small" style={{ margin: '20px 0', textAlign: 'left' }}>
+                <Descriptions title="Session Details" size="small" column={1}>
+                  {sessionInfo.courseCode && (
+                    <Descriptions.Item label="Course">
+                      <BookOpen size={14} style={{ marginRight: 8 }} />
+                      {sessionInfo.courseCode}
+                    </Descriptions.Item>
+                  )}
+                  {sessionInfo.level && (
+                    <Descriptions.Item label="Level">
+                      <GraduationCap size={14} style={{ marginRight: 8 }} />
+                      Level {sessionInfo.level}
+                    </Descriptions.Item>
+                  )}
+                </Descriptions>
+              </Card>
+            )}
             
             <Alert
               style={{ margin: '20px 0', textAlign: 'left' }}
@@ -322,6 +544,9 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                   <li>Good lighting on your face</li>
                   <li>Remove glasses or hats if possible</li>
                   <li>Look directly at the camera</li>
+                  {mode === 'attendance' && (
+                    <li>Face must be enrolled in the system</li>
+                  )}
                 </ul>
               }
               type="info"
@@ -361,7 +586,6 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                 screenshotQuality={1}
               />
               
-              {/* Face overlay */}
               {faceDetected && (
                 <div style={{
                   position: 'absolute',
@@ -408,6 +632,14 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                 />
               )}
               
+              {mode === 'attendance' && attendanceProgress > 0 && (
+                <Progress 
+                  percent={Math.round(attendanceProgress)}
+                  status="active"
+                  format={percent => `Processing: ${percent}%`}
+                />
+              )}
+              
               {statusMessage && (
                 <Alert
                   message={statusMessage}
@@ -436,7 +668,9 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                 size="large"
                 icon={<Camera />}
               >
-                {mode === 'enrollment' ? 'Capture & Enroll Face' : 'Capture & Verify Face'}
+                {mode === 'enrollment' ? 'Capture & Enroll Face' : 
+                 mode === 'verification' ? 'Capture & Verify Face' : 
+                 'Scan for Attendance'}
               </Button>
               
               <Button 
@@ -465,40 +699,94 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
               </Card>
             )}
 
-            {/* Verification Result */}
-            {lastResult && mode === 'verification' && (
+            {/* Attendance/Verification Result */}
+            {(mode === 'attendance' || mode === 'verification') && lastResult && (
               <Card 
                 type="inner" 
                 style={{ marginTop: 20 }}
                 title={
                   <Space>
-                    {lastResult.match ? (
+                    {lastResult.success && lastResult.match ? (
                       <>
                         <CheckCircle color="#52c41a" />
-                        <Text strong type="success">Verification Successful</Text>
+                        <Text strong type="success">
+                          {mode === 'attendance' ? 'Attendance Marked' : 'Verification Successful'}
+                        </Text>
                       </>
                     ) : (
                       <>
                         <XCircle color="#ff4d4f" />
-                        <Text strong type="danger">Verification Failed</Text>
+                        <Text strong type="danger">
+                          {mode === 'attendance' ? 'Attendance Failed' : 'Verification Failed'}
+                        </Text>
                       </>
                     )}
                   </Space>
                 }
               >
-                {lastResult.match && lastResult.student && (
+                {lastResult.success && lastResult.match && lastResult.student && (
                   <div>
-                    <Text strong>Student Details:</Text>
-                    <div style={{ marginTop: 10 }}>
-                      <div><strong>Name:</strong> {lastResult.student.name}</div>
-                      <div><strong>ID:</strong> {lastResult.student.student_id || lastResult.student.matric_number}</div>
-                      <div><strong>Department:</strong> {lastResult.student.department?.name || 'N/A'}</div>
-                      <div><strong>Level:</strong> {lastResult.student.level_code || lastResult.student.current_level?.name || 'N/A'}</div>
-                      <div><strong>Confidence:</strong> {Math.round(lastResult.confidence * 100)}%</div>
-                      <div><strong>Time:</strong> {new Date(lastResult.timestamp).toLocaleTimeString()}</div>
-                    </div>
+                    <Descriptions column={1} size="small">
+                      <Descriptions.Item label="Name">
+                        <UserCheck size={14} style={{ marginRight: 8 }} />
+                        {lastResult.student.name}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Matric Number">
+                        <GraduationCap size={14} style={{ marginRight: 8 }} />
+                        {lastResult.student.matric_number || lastResult.student.student_id}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Department">
+                        <Building size={14} style={{ marginRight: 8 }} />
+                        {lastResult.student.department?.name || lastResult.student.department_code}
+                      </Descriptions.Item>
+                      <Descriptions.Item label="Level">
+                        <BookOpen size={14} style={{ marginRight: 8 }} />
+                        {lastResult.student.level || lastResult.student.level_code}
+                      </Descriptions.Item>
+                      {mode === 'attendance' && (
+                        <>
+                          <Descriptions.Item label="Match Score">
+                            <Text strong type="success">
+                              {Math.round(lastResult.matchScore || (lastResult.confidence * 100))}%
+                            </Text>
+                          </Descriptions.Item>
+                          <Descriptions.Item label="Time">
+                            <Clock size={14} style={{ marginRight: 8 }} />
+                            {new Date(lastResult.timestamp).toLocaleTimeString()}
+                          </Descriptions.Item>
+                        </>
+                      )}
+                    </Descriptions>
                   </div>
                 )}
+              </Card>
+            )}
+
+            {/* Attendance session summary */}
+            {mode === 'attendance' && attendanceRecords.length > 0 && (
+              <Card 
+                type="inner" 
+                style={{ marginTop: 20 }}
+                title={
+                  <Space>
+                    <UserCheck size={16} />
+                    <Text strong>Attendance Summary</Text>
+                  </Space>
+                }
+                size="small"
+              >
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Text>Total Marked:</Text>
+                    <Badge count={attendanceRecords.length} style={{ backgroundColor: '#52c41a' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Text>Last Student:</Text>
+                    <Text strong>
+                      {attendanceRecords[attendanceRecords.length - 1]?.student?.name || 'None'}
+                    </Text>
+                  </div>
+                </Space>
               </Card>
             )}
           </>

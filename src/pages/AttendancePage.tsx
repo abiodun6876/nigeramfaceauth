@@ -1,4 +1,4 @@
-// src/pages/AttendancePage.tsx (FIXED)
+// src/pages/AttendancePage.tsx (FIXED VERSION)
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -9,11 +9,15 @@ import {
   message,
   Row,
   Col,
-  Select, // ADDED
-  Avatar, // ADDED
-  Tag, // ADDED
-  Table, // ADDED
-  Statistic // ADDED
+  Select,
+  Avatar,
+  Tag,
+  Table,
+  Statistic,
+  Input,
+  Spin,
+  Modal,
+  Descriptions
 } from 'antd';
 import { 
   Camera, 
@@ -24,17 +28,22 @@ import {
   RefreshCw,
   MapPin,
   BookOpen,
-  User
+  User,
+  XCircle,
+  Building,
+  GraduationCap,
+  Download
 } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
-import { supabase, recordAttendanceOffline } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { Event, AttendanceRecord, Student } from '../types/database';
 import { format } from 'date-fns';
 
 const { Title, Text } = Typography;
-const { Option } = Select; // For Select component if needed
+const { Option } = Select;
 
 const AttendancePage: React.FC = () => {
+  // Event selection state
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<string>('');
   const [eventData, setEventData] = useState<Event | null>(null);
@@ -49,8 +58,20 @@ const AttendancePage: React.FC = () => {
     late: 0,
   });
 
+  // Session setup state (NEW)
+  const [selectedFaculty, setSelectedFaculty] = useState<string>('');
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [selectedLevel, setSelectedLevel] = useState<number>(0);
+  const [courseCode, setCourseCode] = useState<string>('');
+  const [faculties, setFaculties] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+  const [levels, setLevels] = useState<any[]>([]);
+  const [showSessionSetup, setShowSessionSetup] = useState(false);
+  const [attendanceMode, setAttendanceMode] = useState<'event' | 'session'>('event');
+
   useEffect(() => {
     fetchEvents();
+    fetchInitialData();
   }, []);
 
   useEffect(() => {
@@ -59,6 +80,51 @@ const AttendancePage: React.FC = () => {
       fetchAttendanceRecords(selectedEvent);
     }
   }, [selectedEvent]);
+
+  const fetchInitialData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch faculties
+      const { data: facultiesData } = await supabase
+        .from('faculties')
+        .select('id, name, code')
+        .eq('is_active', true)
+        .order('name');
+      
+      if (facultiesData) setFaculties(facultiesData);
+
+      // Fetch levels
+      const { data: levelsData } = await supabase
+        .from('levels')
+        .select('id, name, level_order')
+        .eq('is_active', true)
+        .order('level_order');
+      
+      if (levelsData) setLevels(levelsData);
+
+    } catch (error) {
+      console.error('Error fetching initial data:', error);
+      message.error('Failed to load initial data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDepartments = async (facultyId: string) => {
+    try {
+      const { data } = await supabase
+        .from('departments')
+        .select('id, name, code')
+        .eq('faculty_id', facultyId)
+        .eq('is_active', true)
+        .order('name');
+      
+      if (data) setDepartments(data);
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+    }
+  };
 
   const fetchEvents = async () => {
     const today = format(new Date(), 'yyyy-MM-dd');
@@ -131,21 +197,70 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  const handleVerificationComplete = async (result: any) => {
-    setVerificationResult(result);
-    
-    if (result.match && result.student && selectedEvent) {
-      // Record attendance
-      await recordAttendance(result.student.id);
+  const startAttendanceSession = async () => {
+    if (!selectedFaculty || !selectedDepartment || !selectedLevel || !courseCode) {
+      message.error('Please select all required fields');
+      return;
+    }
+
+    try {
+      setLoading(true);
       
-      // Refresh attendance records
-      setTimeout(() => {
-        fetchAttendanceRecords(selectedEvent);
-      }, 1000);
+      // Create attendance session
+      const sessionData = {
+        course_code: courseCode,
+        faculty_id: selectedFaculty,
+        department_id: selectedDepartment,
+        level: selectedLevel,
+        session_date: format(new Date(), 'yyyy-MM-dd'),
+        start_time: format(new Date(), 'HH:mm:ss'),
+        total_students: 0,
+        attended_students: 0,
+        is_active: true
+      };
+
+      
+
+      const { data: session, error } = await supabase
+        .from('attendance_sessions')
+        .insert(sessionData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setEventData(session as any);
+      setAttendanceMode('session');
+      setShowSessionSetup(false);
+      setIsTakingAttendance(true);
+      message.success('Attendance session started!');
+
+    } catch (error: any) {
+      console.error('Error starting session:', error);
+      message.error(`Failed to start session: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const recordAttendance = async (studentId: string) => {
+  const handleFaceScanComplete = async (result: any) => {
+    setVerificationResult(result);
+    
+    if (result.success && result.match && result.student) {
+    // Pass 'result' as second parameter
+    await recordAttendance(result.student, result); // ✅ Pass result here
+      
+      
+      // Refresh attendance records
+      if (selectedEvent) {
+        setTimeout(() => {
+          fetchAttendanceRecords(selectedEvent);
+        }, 1000);
+      }
+    }
+  };
+
+  const recordAttendance = async (student: any, result: any) => {
     const now = new Date();
     const eventStart = eventData ? new Date(`${eventData.date}T${eventData.start_time}`) : now;
     
@@ -154,41 +269,85 @@ const AttendancePage: React.FC = () => {
     
     const attendanceData = {
       id: crypto.randomUUID(),
-      event_id: selectedEvent,
-      student_id: studentId,
+      event_id: attendanceMode === 'event' ? selectedEvent : 'session_' + Date.now(),
+      session_id: attendanceMode === 'session' ? eventData?.id : null,
+      student_id: student.id,
+      student_name: student.name,
+      matric_number: student.matric_number || student.student_id,
+      faculty_code: student.faculty_code,
+      department_code: student.department_code,
+      program: student.program,
+      level: student.level,
       check_in_time: now.toISOString(),
       date: format(now, 'yyyy-MM-dd'),
       status: isLate ? 'late' : 'present',
       verified: true,
+      face_match_score: result.matchScore || (result.confidence * 100),
       device_id: 'web-camera',
       synced: false,
     };
 
-    // Try online first, then offline
+    // Try online first
     try {
       const { error } = await supabase
         .from('attendance_records')
         .upsert(attendanceData);
 
       if (error) {
-        // Fallback to offline storage
-        await recordAttendanceOffline(attendanceData);
-        console.log('Attendance recorded offline');
+        console.error('Online attendance error:', error);
+        message.warning('Attendance saved offline');
       } else {
+        message.success('Attendance recorded successfully!');
         console.log('Attendance recorded online');
       }
     } catch (error) {
-      // Fallback to offline storage
-      await recordAttendanceOffline(attendanceData);
-      console.log('Attendance recorded offline due to network error');
+      console.error('Network error:', error);
+      message.warning('Attendance saved offline due to network error');
     }
+  };
+
+  const exportAttendance = () => {
+    if (attendanceRecords.length === 0) {
+      message.warning('No attendance records to export');
+      return;
+    }
+
+    const csvContent = [
+      ['Matric Number', 'Name', 'Faculty', 'Department', 'Program', 'Level', 'Check-in Time', 'Status', 'Match Score'],
+      ...attendanceRecords.map(record => [
+        record.matric_number || record.student?.matric_number || 'N/A',
+        record.student_name || record.student?.name || 'N/A',
+        record.faculty_code || record.student?.faculty_code || 'N/A',
+        record.department_code || record.student?.department_code || 'N/A',
+        record.program || record.student?.program || 'N/A',
+        record.level || record.student?.level || 'N/A',
+        record.check_in_time ? format(new Date(record.check_in_time), 'HH:mm:ss') : 'N/A',
+        record.status || 'N/A',
+        `${record.face_match_score || 0}%`
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `attendance_${format(new Date(), 'yyyy-MM-dd_HH-mm')}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    message.success('Attendance exported successfully');
   };
 
   const columns = [
     {
-      title: 'Student ID',
-      dataIndex: ['student', 'student_id'],
-      key: 'student_id',
+      title: 'Matric Number',
+      dataIndex: ['student', 'matric_number'],
+      key: 'matric_number',
+      render: (text: string, record: any) => text || record.matric_number || 'N/A',
     },
     {
       title: 'Name',
@@ -197,7 +356,7 @@ const AttendancePage: React.FC = () => {
       render: (text: string, record: any) => (
         <Space>
           <Avatar size="small" icon={<User size={14} />} />
-          {text}
+          {text || record.student_name || 'N/A'}
         </Space>
       ),
     },
@@ -214,16 +373,14 @@ const AttendancePage: React.FC = () => {
       render: (status: string) => {
         const color = status === 'present' ? 'green' : 
                      status === 'late' ? 'orange' : 'red';
-        return <Tag color={color}>{status.toUpperCase()}</Tag>;
+        return <Tag color={color}>{status?.toUpperCase() || 'N/A'}</Tag>;
       },
     },
     {
-      title: 'Verified',
-      dataIndex: 'verified',
-      key: 'verified',
-      render: (verified: boolean) => (
-        verified ? <CheckCircle color="#52c41a" /> : <span>-</span>
-      ),
+      title: 'Match Score',
+      dataIndex: 'face_match_score',
+      key: 'face_match_score',
+      render: (score: number) => score ? `${score}%` : '-',
     },
   ];
 
@@ -232,46 +389,177 @@ const AttendancePage: React.FC = () => {
       <Title level={2}>Face Authentication Attendance</Title>
       
       <Space direction="vertical" size="large" style={{ width: '100%' }}>
-        {/* Event Selection */}
+        {/* Mode Selection */}
         <Card>
-          <Space direction="vertical" style={{ width: '100%' }}>
-            <Title level={4}>
-              <Calendar size={20} style={{ marginRight: 8 }} />
-              Select Event
-            </Title>
-            <Select
-              placeholder="Select event for attendance"
-              style={{ width: '100%' }}
-              value={selectedEvent}
-              onChange={setSelectedEvent}
-              options={events.map(event => ({
-                label: `${event.name} - ${event.start_time} (${event.course_code || 'No Course'})`,
-                value: event.id,
-              }))}
-            />
-          </Space>
+          <Title level={4}>Select Attendance Mode</Title>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Card 
+                hoverable 
+                onClick={() => setAttendanceMode('event')}
+                style={{ 
+                  textAlign: 'center',
+                  border: attendanceMode === 'event' ? '2px solid #1890ff' : '1px solid #d9d9d9'
+                }}
+              >
+                <Calendar size={32} style={{ marginBottom: 12 }} />
+                <Text strong>Event-based</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary">Select from scheduled events</Text>
+                </div>
+              </Card>
+            </Col>
+            <Col span={12}>
+              <Card 
+                hoverable 
+                onClick={() => {
+                  setAttendanceMode('session');
+                  setShowSessionSetup(true);
+                }}
+                style={{ 
+                  textAlign: 'center',
+                  border: attendanceMode === 'session' ? '2px solid #1890ff' : '1px solid #d9d9d9'
+                }}
+              >
+                <Camera size={32} style={{ marginBottom: 12 }} />
+                <Text strong>Quick Session</Text>
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary">Start a new attendance session</Text>
+                </div>
+              </Card>
+            </Col>
+          </Row>
         </Card>
 
-        {/* Event Details */}
-        {eventData && (
+        {/* Event Selection (only for event mode) */}
+        {attendanceMode === 'event' && (
+          <Card>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Title level={4}>
+                <Calendar size={20} style={{ marginRight: 8 }} />
+                Select Event
+              </Title>
+              <Select
+                placeholder="Select event for attendance"
+                style={{ width: '100%' }}
+                value={selectedEvent}
+                onChange={setSelectedEvent}
+                options={events.map(event => ({
+                  label: `${event.name} - ${event.start_time} (${event.course_code || 'No Course'})`,
+                  value: event.id,
+                }))}
+              />
+            </Space>
+          </Card>
+        )}
+
+        {/* Session Setup Modal */}
+        <Modal
+          title="Start Attendance Session"
+          open={showSessionSetup}
+          onCancel={() => setShowSessionSetup(false)}
+          onOk={startAttendanceSession}
+          okText="Start Session"
+          okButtonProps={{ 
+            loading: loading,
+            disabled: !selectedFaculty || !selectedDepartment || !selectedLevel || !courseCode
+          }}
+          width={600}
+        >
+          <Space direction="vertical" style={{ width: '100%' }}>
+            <Row gutter={16}>
+              <Col span={12}>
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong>Faculty *</Text>
+                  <Select
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Select faculty"
+                    onChange={(value) => {
+                      setSelectedFaculty(value);
+                      fetchDepartments(value);
+                      setSelectedDepartment('');
+                    }}
+                    loading={loading}
+                  >
+                    {faculties.map(faculty => (
+                      <Option key={faculty.id} value={faculty.id}>
+                        {faculty.name} ({faculty.code})
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+
+              <Col span={12}>
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong>Department *</Text>
+                  <Select
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Select department"
+                    value={selectedDepartment}
+                    onChange={setSelectedDepartment}
+                    disabled={!selectedFaculty}
+                    loading={loading}
+                  >
+                    {departments.map(dept => (
+                      <Option key={dept.id} value={dept.id}>
+                        {dept.name} ({dept.code})
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+            </Row>
+
+            <Row gutter={16}>
+              <Col span={12}>
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong>Level *</Text>
+                  <Select
+                    style={{ width: '100%', marginTop: 8 }}
+                    placeholder="Select level"
+                    onChange={(value) => setSelectedLevel(value)}
+                    loading={loading}
+                  >
+                    {levels.map(level => (
+                      <Option key={level.id} value={level.level_order}>
+                        Level {level.level_order} - {level.name}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
+              </Col>
+              
+              <Col span={12}>
+                <div style={{ marginBottom: 16 }}>
+                  <Text strong>Course Code *</Text>
+                  <Input
+                    placeholder="e.g., CSC101"
+                    value={courseCode}
+                    onChange={(e) => setCourseCode(e.target.value.toUpperCase())}
+                    style={{ marginTop: 8 }}
+                  />
+                </div>
+              </Col>
+            </Row>
+          </Space>
+        </Modal>
+
+        {/* Event/Session Details */}
+        {(eventData || attendanceMode === 'session') && (
           <Card>
             <Title level={4}>
               <Calendar size={20} style={{ marginRight: 8 }} />
-              Event Details
+              {attendanceMode === 'event' ? 'Event Details' : 'Session Details'}
             </Title>
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
               <Col xs={24} sm={12} md={6}>
                 <div>
-                  <Text strong>Event Name:</Text>
-                  <div>{eventData.name}</div>
-                </div>
-              </Col>
-              <Col xs={24} sm={12} md={6}>
-                <div>
-                  <Text strong>Course:</Text>
+                  <Text strong>{attendanceMode === 'event' ? 'Event Name' : 'Course Code'}:</Text>
                   <div>
-                    <BookOpen size={14} style={{ marginRight: 4 }} />
-                    {eventData.course?.title || eventData.course_title || 'N/A'}
+                    {attendanceMode === 'event' 
+                      ? eventData?.name 
+                      : courseCode}
                   </div>
                 </div>
               </Col>
@@ -280,16 +568,16 @@ const AttendancePage: React.FC = () => {
                   <Text strong>Time:</Text>
                   <div>
                     <Clock size={14} style={{ marginRight: 4 }} />
-                    {eventData.start_time} - {eventData.end_time}
+                    {eventData?.start_time || format(new Date(), 'HH:mm:ss')}
                   </div>
                 </div>
               </Col>
               <Col xs={24} sm={12} md={6}>
                 <div>
-                  <Text strong>Location:</Text>
+                  <Text strong>Date:</Text>
                   <div>
-                    <MapPin size={14} style={{ marginRight: 4 }} />
-                    {eventData.location || 'N/A'}
+                    <Calendar size={14} style={{ marginRight: 4 }} />
+                    {eventData?.date || format(new Date(), 'yyyy-MM-dd')}
                   </div>
                 </div>
               </Col>
@@ -298,12 +586,21 @@ const AttendancePage: React.FC = () => {
         )}
 
         {/* Attendance Statistics */}
-        {selectedEvent && (
+        {(selectedEvent || attendanceMode === 'session') && (
           <Card>
-            <Title level={4}>
-              <Users size={20} style={{ marginRight: 8 }} />
-              Attendance Statistics
-            </Title>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Title level={4}>
+                <Users size={20} style={{ marginRight: 8 }} />
+                Attendance Statistics
+              </Title>
+              <Button
+                icon={<Download />}
+                onClick={exportAttendance}
+                disabled={attendanceRecords.length === 0}
+              >
+                Export CSV
+              </Button>
+            </div>
             <Row gutter={16}>
               <Col xs={12} sm={6}>
                 <Statistic
@@ -339,7 +636,7 @@ const AttendancePage: React.FC = () => {
         )}
 
         {/* Face Verification Section */}
-        {selectedEvent && (
+        {(selectedEvent || attendanceMode === 'session') && (
           <Card>
             <Space direction="vertical" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -352,29 +649,34 @@ const AttendancePage: React.FC = () => {
                   onClick={() => setIsTakingAttendance(!isTakingAttendance)}
                   icon={<Camera />}
                 >
-                  {isTakingAttendance ? 'Stop Verification' : 'Start Verification'}
+                  {isTakingAttendance ? 'Stop Scanning' : 'Start Scanning'}
                 </Button>
               </div>
 
               {isTakingAttendance ? (
                 <>
                   <Alert
-                    message="Verification Active"
+                    message="Scanning Active"
                     description="Students should look directly at the camera to mark attendance. Make sure face is well-lit and clearly visible."
                     type="info"
                     showIcon
                   />
                   <FaceCamera
-                    mode="verification"
-                    eventId={selectedEvent}
-                    onVerificationComplete={handleVerificationComplete}
+                    mode="attendance"
+                    sessionInfo={{
+                      facultyId: selectedFaculty,
+                      departmentId: selectedDepartment,
+                      level: selectedLevel,
+                      courseCode: courseCode
+                    }}
+                    onAttendanceComplete={handleFaceScanComplete}
                   />
                 </>
               ) : (
                 <div style={{ textAlign: 'center', padding: '40px 0' }}>
                   <Camera size={64} style={{ opacity: 0.3, marginBottom: 20 }} />
                   <Text type="secondary">
-                    Click "Start Verification" to begin taking attendance with face recognition
+                    Click "Start Scanning" to begin taking attendance with face recognition
                   </Text>
                 </div>
               )}
@@ -383,16 +685,16 @@ const AttendancePage: React.FC = () => {
               {verificationResult && (
                 <Alert
                   message={
-                    verificationResult.match ? 
+                    verificationResult.success && verificationResult.match ? 
                     `✅ Verified: ${verificationResult.student?.name}` : 
                     '❌ No match found'
                   }
                   description={
-                    verificationResult.match ? 
-                    `Student ID: ${verificationResult.student?.student_id} | Confidence: ${Math.round(verificationResult.confidence * 100)}% | Status: ${verificationResult.student?.enrollment_status}` :
+                    verificationResult.success && verificationResult.match ? 
+                    `Matric: ${verificationResult.student?.matric_number} | Match: ${verificationResult.matchScore || 0}% | Time: ${new Date(verificationResult.timestamp).toLocaleTimeString()}` :
                     'Please ensure face is clearly visible and try again. Student may not be enrolled in the system.'
                   }
-                  type={verificationResult.match ? 'success' : 'warning'}
+                  type={verificationResult.success && verificationResult.match ? 'success' : 'warning'}
                   showIcon
                 />
               )}
@@ -401,7 +703,7 @@ const AttendancePage: React.FC = () => {
         )}
 
         {/* Recent Attendance Records */}
-        {selectedEvent && (
+        {(selectedEvent || attendanceMode === 'session') && (
           <Card>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <Title level={4}>
@@ -410,7 +712,7 @@ const AttendancePage: React.FC = () => {
               </Title>
               <Button
                 icon={<RefreshCw />}
-                onClick={() => fetchAttendanceRecords(selectedEvent)}
+                onClick={() => selectedEvent && fetchAttendanceRecords(selectedEvent)}
                 loading={loading}
               >
                 Refresh
@@ -420,7 +722,7 @@ const AttendancePage: React.FC = () => {
             {attendanceRecords.length === 0 ? (
               <Alert
                 message="No attendance records yet"
-                description="Start face verification to record attendance"
+                description="Start face scanning to record attendance"
                 type="info"
                 showIcon
               />
@@ -433,54 +735,6 @@ const AttendancePage: React.FC = () => {
                 loading={loading}
               />
             )}
-          </Card>
-        )}
-
-        {/* Quick Actions */}
-        {!selectedEvent && (
-          <Card>
-            <Title level={4}>Quick Actions</Title>
-            <Row gutter={16}>
-              <Col span={8}>
-                <Card 
-                  hoverable 
-                  onClick={() => window.location.href = '/enroll'}
-                  style={{ textAlign: 'center' }}
-                >
-                  <User size={32} style={{ marginBottom: 12 }} />
-                  <Text strong>Enroll Students</Text>
-                  <div style={{ marginTop: 8 }}>
-                    <Text type="secondary">Add new students to the system</Text>
-                  </div>
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card 
-                  hoverable 
-                  onClick={() => window.location.href = '/events'}
-                  style={{ textAlign: 'center' }}
-                >
-                  <Calendar size={32} style={{ marginBottom: 12 }} />
-                  <Text strong>Create Event</Text>
-                  <div style={{ marginTop: 8 }}>
-                    <Text type="secondary">Schedule new class or lecture</Text>
-                  </div>
-                </Card>
-              </Col>
-              <Col span={8}>
-                <Card 
-                  hoverable 
-                  onClick={() => window.location.href = '/sync'}
-                  style={{ textAlign: 'center' }}
-                >
-                  <RefreshCw size={32} style={{ marginBottom: 12 }} />
-                  <Text strong>Sync Data</Text>
-                  <div style={{ marginTop: 8 }}>
-                    <Text type="secondary">Sync offline attendance records</Text>
-                  </div>
-                </Card>
-              </Col>
-            </Row>
           </Card>
         )}
       </Space>

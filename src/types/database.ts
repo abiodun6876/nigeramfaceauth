@@ -1,4 +1,4 @@
-// In database.ts, add to Student interface
+// src/types/database.ts
 export interface Student {
   id: string;
   student_id: string;
@@ -26,8 +26,7 @@ export interface Student {
   matric_number?: string;
   program_name?: string;
   level_code?: string;
-  // ADD THIS LINE if you want to keep using 'level' property
-  level?: string | number; // You can add this for backward compatibility
+  level?: string | number; // For backward compatibility
   semester_number?: number;
   session_year?: string;
   course_codes?: string[];
@@ -196,8 +195,15 @@ export interface Event {
 
 export interface AttendanceRecord {
   id: string;
-  event_id: string;
+  event_id?: string; // Optional for session-based attendance
+  session_id?: string; // New: For attendance sessions
   student_id: string;
+  student_name?: string; // Added for session-based attendance
+  matric_number?: string; // Added for session-based attendance
+  faculty_code?: string; // Added for session-based attendance
+  department_code?: string; // Added for session-based attendance
+  program?: string; // Added for session-based attendance
+  level?: number; // Added for session-based attendance
   student?: Student;
   check_in_time: string;
   check_out_time?: string;
@@ -206,6 +212,26 @@ export interface AttendanceRecord {
   verified: boolean;
   device_id: string;
   synced?: boolean;
+  face_match_score?: number; // Added for face verification score
+  photo_url?: string; // Added for captured face photo
+  created_at: string;
+  updated_at: string;
+}
+
+// New interface for Attendance Session
+export interface AttendanceSession {
+  id: string;
+  course_code: string;
+  faculty_id: string;
+  department_id: string;
+  level: number;
+  session_date: string;
+  start_time: string;
+  end_time?: string;
+  total_students: number;
+  attended_students: number;
+  status: 'active' | 'completed';
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -227,6 +253,7 @@ export interface FaceMatchLog {
   id: string;
   student_id?: string;
   event_id?: string;
+  session_id?: string;
   confidence: number;
   threshold: number;
   is_match: boolean;
@@ -281,4 +308,33 @@ export interface StudentCourseRegistration {
   registration_date?: string;
   created_at: string;
   updated_at: string;
+}
+
+// New interface for Face Verification Result
+export interface FaceVerificationResult {
+  success: boolean;
+  match: boolean;
+  student?: Student;
+  confidence?: number;
+  matchScore?: number;
+  message: string;
+  timestamp: string;
+  image?: string;
+  sessionInfo?: {
+    totalStudents?: number;
+    courseCode?: string;
+    level?: number;
+  };
+}
+
+// New interface for Enrollment Result
+export interface EnrollmentResult {
+  success: boolean;
+  studentId?: string;
+  studentName?: string;
+  embedding?: number[];
+  quality?: number;
+  photoUrl?: string;
+  timestamp: string;
+  message: string;
 }
