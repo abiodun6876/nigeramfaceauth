@@ -1,5 +1,5 @@
-// src/pages/EnrollmentPage.tsx - FIXED VERSION
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback import
+// src/pages/EnrollmentPage.tsx - MOBILE RESPONSIVE VERSION
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Card, 
   Form, 
@@ -55,13 +55,11 @@ const EnrollmentPage: React.FC = () => {
   const [form] = Form.useForm();
   const [enrollmentComplete, setEnrollmentComplete] = useState(false);
 
-  // Define fetchAcademicData using useCallback before using it
   const fetchAcademicData = useCallback(async () => {
     try {
       setLoading(true);
       console.log('Fetching academic data...');
       
-      // Fetch all academic data in parallel
       const [
         facultiesRes,
         levelsRes,
@@ -76,31 +74,16 @@ const EnrollmentPage: React.FC = () => {
         supabase.from('semesters').select('*').eq('is_active', true).order('semester_number')
       ]);
 
-      console.log('Faculties:', facultiesRes.data?.length || 0);
-      console.log('Levels:', levelsRes.data?.length || 0);
-      console.log('Sessions:', sessionsRes.data?.length || 0);
-      console.log('Programs:', programsRes.data?.length || 0);
-      console.log('Semesters:', semestersRes.data?.length || 0);
-      console.log('Semesters data:', semestersRes.data);
-
       if (!facultiesRes.error) setFaculties(facultiesRes.data || []);
       if (!levelsRes.error) setLevels(levelsRes.data || []);
       if (!sessionsRes.error) setSessions(sessionsRes.data || []);
       if (!programsRes.error) setPrograms(programsRes.data || []);
       if (!semestersRes.error) {
-        const semestersData = semestersRes.data || [];
-        console.log('Semesters with academic_session_id:', semestersData.map(s => ({
-          id: s.id,
-          name: s.name,
-          academic_session_id: s.academic_session_id
-        })));
-        setSemesters(semestersData);
+        setSemesters(semestersRes.data || []);
       }
 
-      // If no programs found, create default programs
       if (programsRes.data?.length === 0) {
         await createDefaultPrograms();
-        // Fetch programs again
         const { data: newPrograms } = await supabase
           .from('programs')
           .select('*')
@@ -115,9 +98,8 @@ const EnrollmentPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, []); // Empty dependency array since it doesn't depend on any props or state
+  }, []);
 
-  // Create default programs function
   const createDefaultPrograms = useCallback(async () => {
     try {
       console.log('Creating default programs...');
@@ -172,28 +154,19 @@ const EnrollmentPage: React.FC = () => {
         }
       ];
 
-      const { error } = await supabase
-        .from('programs')
-        .insert(defaultPrograms);
+      await supabase.from('programs').insert(defaultPrograms);
 
-      if (error) {
-        console.error('Error creating default programs:', error);
-      } else {
-        console.log('Default programs created successfully');
-      }
     } catch (error) {
       console.error('Error in createDefaultPrograms:', error);
     }
   }, []);
 
-  // Use effect to fetch data on component mount
   useEffect(() => {
     fetchAcademicData();
-  }, [fetchAcademicData]); // Now fetchAcademicData is defined and can be used
+  }, [fetchAcademicData]);
 
   const fetchDepartments = async (facultyId: string) => {
     try {
-      console.log('Fetching departments for faculty:', facultyId);
       const { data, error } = await supabase
         .from('departments')
         .select('*')
@@ -202,19 +175,14 @@ const EnrollmentPage: React.FC = () => {
         .order('name');
 
       if (!error) {
-        console.log('Departments fetched:', data?.length || 0);
         setDepartments(data || []);
-      } else {
-        console.error('Error fetching departments:', error);
       }
     } catch (error) {
       console.error('Error fetching departments:', error);
     }
   };
 
-  
   const handleFacultyChange = (value: string) => {
-    console.log('Faculty selected:', value);
     setSelectedFaculty(value);
     fetchDepartments(value);
     form.setFieldValue('department_id', undefined);
@@ -222,7 +190,6 @@ const EnrollmentPage: React.FC = () => {
   };
 
   const handleSessionChange = (value: string) => {
-    console.log('Session selected:', value);
     form.setFieldValue('current_semester_id', undefined);
   };
 
@@ -238,13 +205,11 @@ const EnrollmentPage: React.FC = () => {
         await form.validateFields();
         const values = form.getFieldsValue();
         
-        // Generate matric number if not provided
         if (!values.matric_number) {
           values.matric_number = generateMatricNumber();
           form.setFieldValue('matric_number', values.matric_number);
         }
 
-        console.log('Step 1 data:', values);
         setStudentData(values);
         setCurrentStep(1);
       } catch (error) {
@@ -276,10 +241,8 @@ const EnrollmentPage: React.FC = () => {
   const handleEnrollmentComplete = async (result: any) => {
     if (result.success) {
       try {
-        // Get all form values
         const formValues = form.getFieldsValue();
         
-        // Find the selected program name
         const selectedProgram = programs.find(p => p.id === formValues.program_id);
         const selectedLevel = levels.find(l => l.id === formValues.current_level_id);
         const selectedSession = sessions.find(s => s.id === formValues.academic_session_id);
@@ -298,21 +261,14 @@ const EnrollmentPage: React.FC = () => {
           is_active: true
         };
 
-        console.log('Inserting student data:', completeStudentData);
-
-        // Insert student record
         const { data, error } = await supabase
           .from('students')
           .insert(completeStudentData)
           .select()
           .single();
 
-        if (error) {
-          console.error('Supabase insert error:', error);
-          throw error;
-        }
+        if (error) throw error;
 
-        // Create academic history record
         if (data) {
           await supabase.from('student_academic_history').insert({
             student_id: data.id,
@@ -327,11 +283,6 @@ const EnrollmentPage: React.FC = () => {
 
         setEnrollmentComplete(true);
         message.success('Student enrollment completed successfully!');
-        
-        console.log('Enrollment successful:', {
-          student: data,
-          faceResult: result
-        });
 
       } catch (error: any) {
         console.error('Enrollment error:', error);
@@ -342,12 +293,9 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  // Get available semesters - show all if no academic session selected, otherwise show only current ones
   const getAvailableSemesters = () => {
     const selectedSessionId = form.getFieldValue('academic_session_id');
     
-    // If academic_session_id is null in database, show all semesters
-    // Otherwise, filter by selected academic session
     if (selectedSessionId) {
       return semesters.filter(s => 
         s.academic_session_id === null || 
@@ -358,7 +306,7 @@ const EnrollmentPage: React.FC = () => {
     return semesters;
   };
 
-  // Steps configuration
+  // Updated Steps configuration with mobile-responsive columns
   const stepItems = [
     {
       title: 'Personal Information',
@@ -374,8 +322,9 @@ const EnrollmentPage: React.FC = () => {
             year_of_entry: new Date().getFullYear().toString()
           }}
         >
-          <Row gutter={16}>
-            <Col span={12}>
+          {/* Mobile responsive: xs=24 (full width), md=12 (half width on desktop) */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Matriculation Number"
                 name="matric_number"
@@ -387,7 +336,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Full Name"
                 name="name"
@@ -398,8 +347,8 @@ const EnrollmentPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Email"
                 name="email"
@@ -414,7 +363,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Phone Number"
                 name="phone"
@@ -431,23 +380,18 @@ const EnrollmentPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                label="Gender"
-                name="gender"
-              >
+          {/* Gender, Date of Birth, Year of Entry - Stack on mobile */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={8}>
+              <Form.Item label="Gender" name="gender">
                 <Select placeholder="Select gender">
                   <Select.Option value="male">Male</Select.Option>
                   <Select.Option value="female">Female</Select.Option>
                 </Select>
               </Form.Item>
             </Col>
-            <Col span={8}>
-              <Form.Item
-                label="Date of Birth"
-                name="date_of_birth"
-              >
+            <Col xs={24} md={8}>
+              <Form.Item label="Date of Birth" name="date_of_birth">
                 <DatePicker 
                   style={{ width: '100%' }}
                   placeholder="Select date of birth"
@@ -455,7 +399,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col xs={24} md={8}>
               <Form.Item
                 label="Year of Entry"
                 name="year_of_entry"
@@ -507,8 +451,9 @@ const EnrollmentPage: React.FC = () => {
             style={{ marginBottom: 20 }}
           />
 
-          <Row gutter={16}>
-            <Col span={12}>
+          {/* Faculty and Department - Stack on mobile */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Faculty"
                 name="faculty_id"
@@ -526,7 +471,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Department"
                 name="department_id"
@@ -545,8 +490,9 @@ const EnrollmentPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          {/* Program and Level - Stack on mobile */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Program"
                 name="program_id"
@@ -563,7 +509,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Level"
                 name="current_level_id"
@@ -582,8 +528,9 @@ const EnrollmentPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          {/* Academic Session and Current Semester - Stack on mobile */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Academic Session"
                 name="academic_session_id"
@@ -601,7 +548,7 @@ const EnrollmentPage: React.FC = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 label="Current Semester"
                 name="current_semester_id"
@@ -621,8 +568,9 @@ const EnrollmentPage: React.FC = () => {
             </Col>
           </Row>
 
-          <Row gutter={16}>
-            <Col span={12}>
+          {/* Admission Year - Full width on all devices */}
+          <Row gutter={[16, 16]}>
+            <Col xs={24}>
               <Form.Item
                 label="Admission Year"
                 name="admission_year"
@@ -703,18 +651,19 @@ const EnrollmentPage: React.FC = () => {
               
               {studentData.name && (
                 <Card style={{ marginBottom: 20, maxWidth: 600, margin: '0 auto 20px' }}>
-                  <Row gutter={16}>
-                    <Col span={12}>
+                  {/* Student summary - Stack on mobile */}
+                  <Row gutter={[16, 16]}>
+                    <Col xs={24} md={12}>
                       <Text strong>Student: </Text>
                       <Text>{studentData.name}</Text>
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} md={12}>
                       <Text strong>Matric: </Text>
                       <Text>{studentData.matric_number}</Text>
                     </Col>
                   </Row>
-                  <Row gutter={16} style={{ marginTop: 10 }}>
-                    <Col span={24}>
+                  <Row gutter={[16, 16]} style={{ marginTop: 10 }}>
+                    <Col xs={24}>
                       <Text strong>Program: </Text>
                       <Text>
                         {programs.find(p => p.id === studentData.program_id)?.name || 'Not selected'}
@@ -745,15 +694,22 @@ const EnrollmentPage: React.FC = () => {
         AFE Babalola University - Face Authentication System
       </Text>
 
-      <Card style={{ marginTop: 20 }}>
-        <Steps 
-          current={currentStep} 
-          style={{ marginBottom: 40 }}
-          items={stepItems.map((item, index) => ({
-            title: item.title,
-            icon: item.icon,
-          }))}
-        />
+     <Card style={{ marginTop: 20 }}>
+  <Steps 
+    current={currentStep} 
+    style={{ marginBottom: 40 }}
+    responsive={false}
+    className="enrollment-steps"
+    items={stepItems.map((item, index) => ({
+      key: index,
+      title: (
+        <span className={window.innerWidth < 576 ? 'mobile-step-title' : ''}>
+          {item.title}
+        </span>
+      ),
+      icon: item.icon,
+    }))}
+  />
 
         <div style={{ minHeight: 400 }}>
           {stepItems[currentStep].content}

@@ -26,12 +26,9 @@ import EnrollmentPage from './pages/EnrollmentPage';
 import AttendancePage from './pages/AttendancePage';
 import Dashboard from './pages/Dashboard';
 import SyncPage from './pages/SyncPage';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { supabase } from './lib/supabase';
 import './App.css';
-// In App.tsx, add near the end of your return statement:
-import PWAInstallPrompt from './components/PWAInstallPrompt';
-
-
 
 const { Header, Sider, Content, Footer } = Layout;
 const { Title, Text } = Typography;
@@ -160,9 +157,7 @@ const HomeCards = () => {
     <div style={{ padding: isMobile ? '10px' : '20px' }}>
       <Title level={3} style={{ marginBottom: 24, textAlign: isMobile ? 'center' : 'left' }}>
         Welcome to ABUAD Face Attendance System
-        <PWAInstallPrompt />
       </Title>
-      
 
       <Row gutter={[16, 16]} justify={isMobile ? 'center' : 'start'}>
         {cards.map((card) => (
@@ -589,6 +584,10 @@ npm start
                         Login as Demo Lecturer
                       </Button>
                     </div>
+                    {/* PWA Install Prompt shows even on login screen */}
+                    <div style={{ marginTop: 30 }}>
+                      <PWAInstallPrompt />
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -655,6 +654,8 @@ npm start
                       } />
                       <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
+                    {/* PWA Install Prompt shows when logged in */}
+                    <PWAInstallPrompt />
                   </>
                 )}
               </div>

@@ -563,6 +563,146 @@
   }
 }
 
+/* Add to your App.css */
+/* Enrollment Form Mobile Responsive Styles */
+
+/* Make form fields full width on mobile */
+@media (max-width: 768px) {
+  .enrollment-form .ant-form-item {
+    width: 100%;
+  }
+  
+  .enrollment-form .ant-row {
+    flex-direction: column;
+  }
+  
+  .enrollment-form .ant-col {
+    margin-bottom: 16px;
+  }
+}
+
+/* Adjust steps for mobile */
+@media (max-width: 576px) {
+  .enrollment-steps .ant-steps-horizontal {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .enrollment-steps .ant-steps-item {
+    margin-bottom: 8px;
+    width: 100%;
+  }
+  
+  .enrollment-steps .ant-steps-item-title {
+    font-size: 14px;
+  }
+  
+  .enrollment-steps .ant-steps-item-icon {
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+  }
+  
+  /* Hide step titles on very small screens */
+  .step-mobile .ant-steps-item-title {
+    display: none;
+  }
+}
+
+/* Form input sizing for mobile */
+@media (max-width: 576px) {
+  .ant-input,
+  .ant-select-selector,
+  .ant-picker {
+    font-size: 16px !important; /* Prevents iOS zoom on focus */
+    height: 48px !important;
+  }
+  
+  .ant-input-affix-wrapper {
+    height: 48px !important;
+  }
+  
+  .ant-select-single .ant-select-selector {
+    height: 48px !important;
+    line-height: 48px !important;
+  }
+  
+  .ant-form-item-label > label {
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+}
+
+/* Card adjustments for mobile */
+@media (max-width: 576px) {
+  .ant-card {
+    margin: 0 !important;
+    border-radius: 0;
+  }
+  
+  .ant-card-body {
+    padding: 16px !important;
+  }
+}
+
+/* Button spacing for mobile */
+@media (max-width: 576px) {
+  .ant-space {
+    flex-direction: column;
+    width: 100%;
+  }
+  
+  .ant-space .ant-btn {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+}
+
+/* Alert adjustments for mobile */
+@media (max-width: 576px) {
+  .ant-alert {
+    padding: 12px 16px;
+  }
+  
+  .ant-alert-description {
+    font-size: 14px;
+  }
+}
+
+/* DatePicker adjustments for mobile */
+@media (max-width: 576px) {
+  .ant-picker {
+    width: 100% !important;
+  }
+  
+  .ant-picker-input > input {
+    font-size: 16px;
+  }
+}
+
+/* Select dropdown adjustments for mobile */
+@media (max-width: 576px) {
+  .ant-select-dropdown {
+    font-size: 16px;
+  }
+  
+  .ant-select-item {
+    min-height: 40px;
+    line-height: 40px;
+  }
+}
+
+/* Student summary card on mobile */
+@media (max-width: 576px) {
+  .ant-card .ant-row {
+    flex-direction: column;
+  }
+  
+  .ant-card .ant-col {
+    margin-bottom: 8px;
+  }
+}
+
 /* Add to your App.css or create a mobile.css */
 @media (max-width: 768px) {
   /* Prevent text size adjustment on orientation change */
