@@ -89,6 +89,7 @@ function App() {
       // Test 1: Check if we can access auth
       try {
         const { data: authData, error: authError } = await supabase.auth.getSession();
+      console.log('Auth session:', authData); // Log to use variable
         console.log('Auth test:', authData, authError);
         
         // Test 2: Try to fetch from faculties table

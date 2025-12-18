@@ -1,20 +1,19 @@
-// src/pages/AttendancePage.tsx
+// src/pages/AttendancePage.tsx (FIXED)
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
-  Select, 
   Button, 
-  Table, 
   Typography, 
-  Space, 
-  Alert, 
-  Badge,
-  Tag,
-  Statistic,
+  Space,
+  Alert,
+  message,
   Row,
   Col,
-  List,
-  Avatar
+  Select, // ADDED
+  Avatar, // ADDED
+  Tag, // ADDED
+  Table, // ADDED
+  Statistic // ADDED
 } from 'antd';
 import { 
   Camera, 
@@ -33,6 +32,7 @@ import { Event, AttendanceRecord, Student } from '../types/database';
 import { format } from 'date-fns';
 
 const { Title, Text } = Typography;
+const { Option } = Select; // For Select component if needed
 
 const AttendancePage: React.FC = () => {
   const [events, setEvents] = useState<Event[]>([]);

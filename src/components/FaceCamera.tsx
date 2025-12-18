@@ -1,4 +1,4 @@
-// src/components/FaceCamera.tsx (Fixed)
+// src/components/FaceCamera.tsx (FINAL FIXED VERSION)
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { Button, Alert, Progress, Card, Typography, Space, message } from 'antd';
@@ -26,16 +26,15 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   onVerificationComplete,
   onEnrollmentComplete,
 }) => {
+  // FIX: Correct Webcam ref type
  const webcamRef = useRef<any>(null);
-
- const [isCameraOn, setIsCameraOn] = useState(false);
+  const [isCameraOn, setIsCameraOn] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceQuality, setFaceQuality] = useState(0);
   const [enrollmentProgress, setEnrollmentProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState('');
   const [lastResult, setLastResult] = useState<any>(null);
-  const [hasCameraPermission, setHasCameraPermission] = useState(false);
   const [cameraError, setCameraError] = useState<string>('');
 
   // Video constraints for better camera quality
@@ -45,6 +44,105 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     facingMode: "user" as const,
     frameRate: { ideal: 30, max: 60 }
   };
+
+  // FIX 1: Declare handleEnrollment first (with useCallback)
+  const handleEnrollment = useCallback(async (imageSrc: string) => {
+    setStatusMessage('Starting face enrollment...');
+    
+    const enrollmentSteps = 5;
+    let currentStep = 0;
+
+    const updateProgress = () => {
+      currentStep++;
+      setEnrollmentProgress((currentStep / enrollmentSteps) * 100);
+    };
+
+    // Step 1: Face detected
+    updateProgress();
+    setStatusMessage('Step 1/5: Face detected');
+
+    // Simulate multiple angle captures
+    for (let i = 0; i < 3; i++) {
+      setStatusMessage(`Step ${i + 2}/5: Capturing face angle ${i + 1}/3...`);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      updateProgress();
+    }
+
+    // Final processing
+    setStatusMessage('Step 5/5: Creating face template...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    updateProgress();
+
+    const result = {
+      success: true,
+      studentId: student?.id,
+      studentName: student?.name,
+      embedding: Array(512).fill(0).map(() => Math.random() - 0.5), // Simulated embedding
+      quality: faceQuality,
+      photoUrl: imageSrc,
+      timestamp: new Date().toISOString(),
+      message: `Face enrollment successful for ${student?.name || 'student'}`,
+    };
+
+    setLastResult(result);
+    setStatusMessage(result.message);
+    message.success('Face enrollment completed successfully!');
+
+    if (onEnrollmentComplete) {
+      onEnrollmentComplete(result);
+    }
+  }, [faceQuality, student, onEnrollmentComplete]);
+
+  // FIX 2: Declare handleVerification second (with useCallback)
+  const handleVerification = useCallback(async (imageSrc: string) => {
+    setStatusMessage('Verifying face...');
+    
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Simulate verification with different results
+    const isMatch = Math.random() > 0.3; // 70% match rate for demo
+    const confidence = isMatch ? 0.75 + Math.random() * 0.2 : 0.3 + Math.random() * 0.3;
+
+    // Handle student type safely
+    const studentName = student?.name || 'John Student';
+    const studentId = student?.student_id || student?.matric_number || 'ABU/2024/001';
+    const studentLevel = student?.level_code || student?.current_level?.code || '300';
+    const studentDepartment = student?.department?.name || 'Computer Science';
+    
+    const result = {
+      success: true,
+      match: isMatch,
+      student: isMatch ? student || {
+        id: 'demo-student-id',
+        student_id: studentId,
+        name: studentName,
+        department: { name: studentDepartment },
+        level_code: studentLevel,
+        current_level: { code: studentLevel, name: `Level ${studentLevel}` },
+        enrollment_status: 'enrolled' as const,
+      } : null,
+      confidence: confidence,
+      distance: 1 - confidence,
+      image: imageSrc,
+      timestamp: new Date().toISOString(),
+      message: isMatch 
+        ? `Student verified: ${studentName} (${studentId})` 
+        : 'No matching student found',
+    };
+
+    setLastResult(result);
+    setStatusMessage(result.message);
+
+    if (isMatch) {
+      message.success(`Attendance marked for ${studentName}`);
+    } else {
+      message.warning('Verification failed. No matching student found.');
+    }
+
+    if (onVerificationComplete) {
+      onVerificationComplete(result);
+    }
+  }, [student, onVerificationComplete]);
 
   useEffect(() => {
     // Check if we're on HTTPS
@@ -72,7 +170,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       // Stop the stream immediately to avoid memory leaks
       stream.getTracks().forEach(track => track.stop());
       
-      setHasCameraPermission(true);
+      // FIX 3: Removed setHasCameraPermission - use setIsCameraOn directly
       setIsCameraOn(true);
       setCameraError('');
       setStatusMessage('Camera started. Position your face in the frame.');
@@ -99,6 +197,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     setStatusMessage('');
   };
 
+  // FIX 4: Now captureFace can reference handleEnrollment and handleVerification
   const captureFace = useCallback(async () => {
     if (!webcamRef.current || !isCameraOn) {
       setStatusMessage('Camera is not ready. Please start camera first.');
@@ -109,7 +208,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       setIsProcessing(true);
       setStatusMessage('Capturing face...');
 
-      // FIX: TypeScript now knows getScreenshot exists
+      // TypeScript now knows getScreenshot exists
       const imageSrc = webcamRef.current.getScreenshot();
       if (!imageSrc) {
         throw new Error('Failed to capture image. Try again.');
@@ -158,101 +257,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  }, [isCameraOn, mode, student, onCapture, onFaceDetected]);
-
-  const handleEnrollment = async (imageSrc: string) => {
-    setStatusMessage('Starting face enrollment...');
-    
-    const enrollmentSteps = 5;
-    let currentStep = 0;
-
-    const updateProgress = () => {
-      currentStep++;
-      setEnrollmentProgress((currentStep / enrollmentSteps) * 100);
-    };
-
-    // Step 1: Face detected
-    updateProgress();
-    setStatusMessage('Step 1/5: Face detected');
-
-    // Simulate multiple angle captures
-    for (let i = 0; i < 3; i++) {
-      setStatusMessage(`Step ${i + 2}/5: Capturing face angle ${i + 1}/3...`);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      updateProgress();
-    }
-
-    // Final processing
-    setStatusMessage('Step 5/5: Creating face template...');
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    updateProgress();
-
-    const result = {
-      success: true,
-      studentId: student?.id,
-      studentName: student?.name,
-      embedding: Array(512).fill(0).map(() => Math.random() - 0.5), // Simulated embedding
-      quality: faceQuality,
-      photoUrl: imageSrc,
-      timestamp: new Date().toISOString(),
-      message: `Face enrollment successful for ${student?.name || 'student'}`,
-    };
-
-    setLastResult(result);
-    setStatusMessage(result.message);
-    message.success('Face enrollment completed successfully!');
-
-    if (onEnrollmentComplete) {
-      onEnrollmentComplete(result);
-    }
-  };
-
-  const handleVerification = async (imageSrc: string) => {
-    setStatusMessage('Verifying face...');
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    // Simulate verification with different results
-    const isMatch = Math.random() > 0.3; // 70% match rate for demo
-    const confidence = isMatch ? 0.75 + Math.random() * 0.2 : 0.3 + Math.random() * 0.3;
-
-    // FIX 2: Handle student type safely
-    const studentName = student?.name || 'John Student';
-    const studentId = student?.student_id || student?.matric_number || 'ABU/2024/001';
-    
-    const result = {
-      success: true,
-      match: isMatch,
-      student: isMatch ? student || {
-        id: 'demo-student-id',
-        student_id: studentId,
-        name: studentName,
-        department: { name: 'Computer Science' },
-        level: 300,
-        enrollment_status: 'enrolled' as const,
-      } : null,
-      confidence: confidence,
-      distance: 1 - confidence,
-      image: imageSrc,
-      timestamp: new Date().toISOString(),
-      message: isMatch 
-        ? `Student verified: ${studentName} (${studentId})` 
-        : 'No matching student found',
-    };
-
-    setLastResult(result);
-    setStatusMessage(result.message);
-
-    if (isMatch) {
-      message.success(`Attendance marked for ${studentName}`);
-    } else {
-      message.warning('Verification failed. No matching student found.');
-    }
-
-    if (onVerificationComplete) {
-      onVerificationComplete(result);
-    }
-  };
+  }, [isCameraOn, mode, student, onCapture, onFaceDetected, handleEnrollment, handleVerification]);
 
   const retryCamera = () => {
     setCameraError('');
@@ -454,8 +459,8 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                 <div style={{ marginTop: 10 }}>
                   <div><strong>Name:</strong> {student.name}</div>
                   <div><strong>Matric:</strong> {student.student_id || student.matric_number || 'N/A'}</div>
-                  <div><strong>Program:</strong> {student.program_name || 'N/A'}</div>
-                  <div><strong>Level:</strong> {student.level_code || student.level || 'N/A'}</div>
+                  <div><strong>Program:</strong> {student.program_name || student.program?.name || 'N/A'}</div>
+                  <div><strong>Level:</strong> {student.level_code || student.current_level?.name || 'N/A'}</div>
                 </div>
               </Card>
             )}
@@ -488,7 +493,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
                       <div><strong>Name:</strong> {lastResult.student.name}</div>
                       <div><strong>ID:</strong> {lastResult.student.student_id || lastResult.student.matric_number}</div>
                       <div><strong>Department:</strong> {lastResult.student.department?.name || 'N/A'}</div>
-                      <div><strong>Level:</strong> {lastResult.student.level || lastResult.student.level_code || 'N/A'}</div>
+                      <div><strong>Level:</strong> {lastResult.student.level_code || lastResult.student.current_level?.name || 'N/A'}</div>
                       <div><strong>Confidence:</strong> {Math.round(lastResult.confidence * 100)}%</div>
                       <div><strong>Time:</strong> {new Date(lastResult.timestamp).toLocaleTimeString()}</div>
                     </div>

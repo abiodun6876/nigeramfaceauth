@@ -1,5 +1,5 @@
 // src/pages/EnrollmentPage.tsx - FIXED VERSION
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback import
 import { 
   Card, 
   Form, 
@@ -55,11 +55,8 @@ const EnrollmentPage: React.FC = () => {
   const [form] = Form.useForm();
   const [enrollmentComplete, setEnrollmentComplete] = useState(false);
 
-  useEffect(() => {
-    fetchAcademicData();
-  }, []);
-
-  const fetchAcademicData = async () => {
+  // Define fetchAcademicData using useCallback before using it
+  const fetchAcademicData = useCallback(async () => {
     try {
       setLoading(true);
       console.log('Fetching academic data...');
@@ -118,9 +115,10 @@ const EnrollmentPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // Empty dependency array since it doesn't depend on any props or state
 
-  const createDefaultPrograms = async () => {
+  // Create default programs function
+  const createDefaultPrograms = useCallback(async () => {
     try {
       console.log('Creating default programs...');
       const defaultPrograms = [
@@ -186,7 +184,12 @@ const EnrollmentPage: React.FC = () => {
     } catch (error) {
       console.error('Error in createDefaultPrograms:', error);
     }
-  };
+  }, []);
+
+  // Use effect to fetch data on component mount
+  useEffect(() => {
+    fetchAcademicData();
+  }, [fetchAcademicData]); // Now fetchAcademicData is defined and can be used
 
   const fetchDepartments = async (facultyId: string) => {
     try {
@@ -209,6 +212,7 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
+  
   const handleFacultyChange = (value: string) => {
     console.log('Faculty selected:', value);
     setSelectedFaculty(value);
