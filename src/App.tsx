@@ -89,7 +89,7 @@ function App() {
       // Test 1: Check if we can access auth
       try {
         const { data: authData, error: authError } = await supabase.auth.getSession();
-      console.log('Auth session:', authData); // Log to use variable
+        console.log('Auth session:', authData);
         console.log('Auth test:', authData, authError);
         
         // Test 2: Try to fetch from faculties table
@@ -227,7 +227,7 @@ function App() {
                           status: 'testing',
                           message: 'Retrying connection...'
                         });
-                        const { data: authData } = await supabase.auth.getSession();
+                        // Only test faculties - no need for auth data in this test
                         const { data: faculties } = await supabase
                           .from('faculties')
                           .select('*')
