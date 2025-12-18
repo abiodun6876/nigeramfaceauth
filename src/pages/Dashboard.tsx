@@ -1,410 +1,573 @@
-// src/pages/Dashboard.tsx
-import React, { useState, useEffect } from 'react';
-import {
-  Card,
-  Row,
-  Col,
-  Statistic,
-  Typography,
-  Table,
-  Space,
-  Button,
-  DatePicker,
-  Select,
-  Alert,
-  Progress,
-  Tag,
-  Badge
-} from 'antd';
-import {
-  Users,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Clock,
-  TrendingUp,
-  Download,
+// src/pages/Dashboard.tsx (With Debug)
+import React, { useEffect, useState } from 'react';
+import { Card, Row, Col, Statistic, Typography, Alert, Button, Progress, Space, Tag } from 'antd';
+import { 
+  Users, 
+  UserCheck, 
+  Calendar, 
+  Camera, 
+  Database,
   RefreshCw,
-  BarChart as BarChartIcon,
-  Activity
+  AlertCircle,
+  CheckCircle,
+  XCircle
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import dayjs from 'dayjs';
+import { supabase, LocalSyncService } from '../lib/supabase';
+import { format } from 'date-fns';
 
 const { Title, Text } = Typography;
-const { RangePicker } = DatePicker;
-const { Option } = Select;
 
-interface AttendanceStats {
-  totalStudents: number;
-  presentToday: number;
-  absentToday: number;
-  attendanceRate: number;
-  totalEvents: number;
-  activeEvents: number;
-}
-
-interface RecentAttendance {
-  id: string;
-  student_name: string;
-  matric_number: string;
-  course_code: string;
-  status: string;
-  timestamp: string;
+interface DebugInfo {
+  connectionTest: {
+    success: boolean | null;
+    error: any;
+    timestamp: string;
+  } | null;
+  studentCountError: {
+    message: string;
+    code: string;
+    details: any;
+    hint: string;
+    timestamp: string;
+  } | null;
+  enrolledError: {
+    message: string;
+    code: string;
+    details: any;
+    hint: string;
+    timestamp: string;
+  } | null;
+  eventsError: {
+    message: string;
+    code: string;
+    details: any;
+    hint: string;
+    timestamp: string;
+  } | null;
+  loadError: {
+    message: string;
+    timestamp: string;
+  } | null;
+  supabaseConfig: {
+    url: string | undefined;
+    keyLoaded: boolean;
+    timestamp: string;
+  } | null;
 }
 
 const Dashboard: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<AttendanceStats>({
+  const [stats, setStats] = useState({
     totalStudents: 0,
-    presentToday: 0,
-    absentToday: 0,
-    attendanceRate: 0,
-    totalEvents: 0,
-    activeEvents: 0
+    enrolledStudents: 0,
+    todayEvents: 0,
+    pendingSync: 0,
   });
-  const [recentAttendance, setRecentAttendance] = useState<RecentAttendance[]>([]);
-  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
-    dayjs().subtract(7, 'days'),
-    dayjs()
-  ]);
-  const [selectedFaculty, setSelectedFaculty] = useState<string>('all');
+  const [loading, setLoading] = useState(true);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
+  const [debugInfo, setDebugInfo] = useState<DebugInfo>({
+    connectionTest: null,
+    studentCountError: null,
+    enrolledError: null,
+    eventsError: null,
+    loadError: null,
+    supabaseConfig: null
+  });
 
-  const fetchDashboardData = async () => {
+  // Debug: Check Supabase configuration
+  useEffect(() => {
+    console.log('🔍 Dashboard Debug - Initializing');
+    console.log('Supabase URL:', process.env.REACT_APP_SUPABASE_URL);
+    console.log('Supabase Key exists:', !!process.env.REACT_APP_SUPABASE_ANON_KEY);
+    console.log('Current supabase client:', supabase);
+    
+    setDebugInfo((prev: DebugInfo) => ({
+      ...prev,
+      supabaseConfig: {
+        url: process.env.REACT_APP_SUPABASE_URL,
+        keyLoaded: !!process.env.REACT_APP_SUPABASE_ANON_KEY,
+        timestamp: new Date().toISOString()
+      }
+    }));
+  }, []);
+
+  useEffect(() => {
+    loadDashboardData();
+    setLastSync(LocalSyncService.getLastSyncTime());
+    testDatabaseConnection();
+  }, []);
+
+  // Test database connection
+  const testDatabaseConnection = async () => {
     try {
-      setLoading(true);
+      console.log('🧪 Testing database connection...');
       
-      // Fetch total students
-      const { count: totalStudents } = await supabase
+      // Test 1: Simple query to test connection
+      const { data, error } = await supabase
+        .from('students')
+        .select('id')
+        .limit(1);
+
+      setDebugInfo((prev: DebugInfo) => ({
+        ...prev,
+        connectionTest: {
+          success: !error,
+          error: error ? {
+            message: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          } : null,
+          timestamp: new Date().toISOString()
+        }
+      }));
+
+      console.log('Connection test result:', { data, error });
+      
+      if (error) {
+        console.error('❌ Database connection failed:', error);
+      } else {
+        console.log('✅ Database connection successful');
+      }
+    } catch (error) {
+      console.error('❌ Connection test exception:', error);
+      setDebugInfo((prev: DebugInfo) => ({
+        ...prev,
+        connectionTest: {
+          success: false,
+          error: String(error),
+          timestamp: new Date().toISOString()
+        }
+      }));
+    }
+  };
+
+  const loadDashboardData = async () => {
+    setLoading(true);
+    console.log('📊 Loading dashboard data...');
+    
+    try {
+      const today = format(new Date(), 'yyyy-MM-dd');
+      console.log('Today:', today);
+      
+      // Get total students - WITH DEBUG
+      console.log('1️⃣ Fetching total students...');
+      const { count: totalStudents, error: studentsError } = await supabase
+        .from('students')
+        .select('*', { count: 'exact', head: true });
+
+      console.log('Total students result:', { count: totalStudents, error: studentsError });
+      
+      if (studentsError) {
+        console.error('❌ Students count error:', {
+          message: studentsError.message,
+          code: studentsError.code,
+          details: studentsError.details,
+          hint: studentsError.hint
+        });
+        
+        setDebugInfo((prev: DebugInfo) => ({
+          ...prev,
+          studentCountError: {
+            message: studentsError.message,
+            code: studentsError.code,
+            details: studentsError.details,
+            hint: studentsError.hint,
+            timestamp: new Date().toISOString()
+          }
+        }));
+      }
+
+      // Get enrolled students - WITH DEBUG
+      console.log('2️⃣ Fetching enrolled students...');
+      const { count: enrolledStudents, error: enrolledError } = await supabase
         .from('students')
         .select('*', { count: 'exact', head: true })
-        .eq('is_active', true);
+        .eq('enrollment_status', 'enrolled');
 
-      // Fetch today's attendance
-      const today = dayjs().startOf('day').toISOString();
-      const { data: todayAttendance } = await supabase
-        .from('attendance_records')
-        .select('*')
-        .gte('created_at', today);
+      console.log('Enrolled students result:', { count: enrolledStudents, error: enrolledError });
+      
+      if (enrolledError) {
+        console.error('❌ Enrolled students error:', {
+          message: enrolledError.message,
+          code: enrolledError.code,
+          details: enrolledError.details,
+          hint: enrolledError.hint
+        });
+        
+        setDebugInfo((prev: DebugInfo) => ({
+          ...prev,
+          enrolledError: {
+            message: enrolledError.message,
+            code: enrolledError.code,
+            details: enrolledError.details,
+            hint: enrolledError.hint,
+            timestamp: new Date().toISOString()
+          }
+        }));
+      }
 
-      const presentToday = todayAttendance?.filter(a => a.status === 'present').length || 0;
-      const absentToday = todayAttendance?.filter(a => a.status === 'absent').length || 0;
-      const attendanceRate = totalStudents ? (presentToday / totalStudents) * 100 : 0;
-
-      // Fetch events
-      const { count: totalEvents } = await supabase
+      // Get today's events - WITH DEBUG
+      console.log('3️⃣ Fetching today\'s events...');
+      const { count: todayEvents, error: eventsError } = await supabase
         .from('events')
         .select('*', { count: 'exact', head: true })
+        .eq('date', today)
         .eq('is_active', true);
 
-      const { count: activeEvents } = await supabase
-        .from('events')
-        .select('*', { count: 'exact', head: true })
-        .eq('is_active', true)
-        .gte('end_time', new Date().toISOString());
+      console.log('Today events result:', { count: todayEvents, error: eventsError });
+      
+      if (eventsError) {
+        console.error('❌ Events error:', {
+          message: eventsError.message,
+          code: eventsError.code,
+          details: eventsError.details,
+          hint: eventsError.hint
+        });
+        
+        setDebugInfo((prev: DebugInfo) => ({
+          ...prev,
+          eventsError: {
+            message: eventsError.message,
+            code: eventsError.code,
+            details: eventsError.details,
+            hint: eventsError.hint,
+            timestamp: new Date().toISOString()
+          }
+        }));
+      }
 
-      // Fetch recent attendance
-      const { data: recentAtt } = await supabase
-        .from('attendance_records')
-        .select(`
-          *,
-          student:students(name, matric_number)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      const formattedRecent = recentAtt?.map(record => ({
-        id: record.id,
-        student_name: record.student?.name || 'Unknown',
-        matric_number: record.student?.matric_number || 'N/A',
-        course_code: record.course_code || 'N/A',
-        status: record.status,
-        timestamp: record.created_at
-      })) || [];
+      // Get pending sync items
+      console.log('4️⃣ Getting pending sync count...');
+      const pendingSync = await LocalSyncService.getPendingSyncCount();
+      console.log('Pending sync:', pendingSync);
 
       setStats({
         totalStudents: totalStudents || 0,
-        presentToday,
-        absentToday,
-        attendanceRate,
-        totalEvents: totalEvents || 0,
-        activeEvents: activeEvents || 0
+        enrolledStudents: enrolledStudents || 0,
+        todayEvents: todayEvents || 0,
+        pendingSync,
       });
 
-      setRecentAttendance(formattedRecent);
+      console.log('✅ Dashboard data loaded:', {
+        totalStudents: totalStudents || 0,
+        enrolledStudents: enrolledStudents || 0,
+        todayEvents: todayEvents || 0,
+        pendingSync
+      });
 
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('❌ Error loading dashboard data:', error);
+      setDebugInfo((prev: DebugInfo) => ({
+        ...prev,
+        loadError: {
+          message: String(error),
+          timestamp: new Date().toISOString()
+        }
+      }));
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSync = async () => {
+    setSyncStatus('syncing');
+    try {
+      const result = await LocalSyncService.syncPendingItems();
+      if (result.success) {
+        setSyncStatus('success');
+        setLastSync(new Date());
+        setTimeout(() => setSyncStatus('idle'), 3000);
+      } else {
+        setSyncStatus('error');
+      }
+      loadDashboardData();
+    } catch (error) {
+      setSyncStatus('error');
+      console.error('Sync error:', error);
+    }
+  };
+
+  const enrollmentPercentage = stats.totalStudents > 0 
+    ? Math.round((stats.enrolledStudents / stats.totalStudents) * 100) 
+    : 0;
+
+  // Debug: Check RLS status
+  const checkRLSStatus = async () => {
+    try {
+      console.log('🔐 Checking RLS status...');
+      
+      // Try to insert a test record (will fail if RLS blocks)
+      const { error } = await supabase
+        .from('students')
+        .insert({ 
+          student_id: `TEST_${Date.now()}`,
+          name: 'Test Student',
+          email: 'test@test.com'
+        })
+        .select();
+      
+      console.log('RLS test insert:', error ? 'BLOCKED' : 'ALLOWED', error);
+      
+    } catch (error) {
+      console.error('RLS check error:', error);
+    }
+  };
+
+  // Add this to your component for debugging
   useEffect(() => {
-    fetchDashboardData();
+    checkRLSStatus();
   }, []);
 
-  const columns = [
-    {
-      title: 'Student',
-      dataIndex: 'student_name',
-      key: 'student_name',
-    },
-    {
-      title: 'Matric Number',
-      dataIndex: 'matric_number',
-      key: 'matric_number',
-    },
-    {
-      title: 'Course',
-      dataIndex: 'course_code',
-      key: 'course_code',
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'present' ? 'success' : status === 'absent' ? 'error' : 'warning'}>
-          {status.toUpperCase()}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Time',
-      dataIndex: 'timestamp',
-      key: 'timestamp',
-      render: (timestamp: string) => dayjs(timestamp).format('HH:mm'),
-    },
-  ];
-
   return (
-    <div style={{ padding: '20px' }}>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
-        <Col>
-          <Title level={2}>Dashboard</Title>
-          <Text type="secondary">Attendance System Overview</Text>
-        </Col>
-        <Col>
-          <Space>
-            <RangePicker
-              value={dateRange}
-              onChange={(dates) => dates && setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs])}
-            />
-            <Select
-              placeholder="Filter by Faculty"
-              style={{ width: 150 }}
-              value={selectedFaculty}
-              onChange={setSelectedFaculty}
-            >
-              <Option value="all">All Faculties</Option>
-              {/* Add faculty options dynamically */}
-            </Select>
-            <Button
-              icon={<RefreshCw size={16} />}
-              onClick={fetchDashboardData}
-              loading={loading}
-            >
-              Refresh
-            </Button>
-          </Space>
-        </Col>
-      </Row>
+    <div>
+      <Title level={2}>Dashboard</Title>
+      <Text type="secondary">Welcome to AFE Babalola University Face Authentication System</Text>
 
-      {/* Stats Cards */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 30 }}>
-        <Col xs={24} sm={12} md={8} lg={4}>
+      {/* DEBUG PANEL - Add this section */}
+      <Card style={{ marginTop: 16, background: '#f6ffed', border: '1px solid #b7eb8f' }}>
+        <Title level={4}>
+          <Space>
+            <AlertCircle size={20} />
+            Debug Information
+          </Space>
+        </Title>
+        
+        <Row gutter={[16, 16]}>
+          <Col span={24}>
+            <Text strong>Connection Status: </Text>
+            {debugInfo.connectionTest?.success ? (
+              <Tag icon={<CheckCircle size={14} />} color="success">Connected</Tag>
+            ) : debugInfo.connectionTest?.error ? (
+              <Tag icon={<XCircle size={14} />} color="error">Failed</Tag>
+            ) : (
+              <Tag color="default">Testing...</Tag>
+            )}
+          </Col>
+          
+          {debugInfo.studentCountError && (
+            <Col span={24}>
+              <Alert
+                message="Students Count Error"
+                description={
+                  <div>
+                    <div><strong>Message:</strong> {debugInfo.studentCountError.message}</div>
+                    <div><strong>Code:</strong> {debugInfo.studentCountError.code}</div>
+                    {debugInfo.studentCountError.details && (
+                      <div><strong>Details:</strong> {JSON.stringify(debugInfo.studentCountError.details)}</div>
+                    )}
+                    {debugInfo.studentCountError.hint && (
+                      <div><strong>Hint:</strong> {debugInfo.studentCountError.hint}</div>
+                    )}
+                  </div>
+                }
+                type="error"
+                showIcon
+              />
+            </Col>
+          )}
+          
+          {debugInfo.enrolledError && (
+            <Col span={24}>
+              <Alert
+                message="Enrolled Students Error"
+                description={
+                  <div>
+                    <div><strong>Message:</strong> {debugInfo.enrolledError.message}</div>
+                    <div><strong>Code:</strong> {debugInfo.enrolledError.code}</div>
+                  </div>
+                }
+                type="error"
+                showIcon
+              />
+            </Col>
+          )}
+          
+          <Col span={24}>
+            <Button 
+              size="small" 
+              onClick={() => {
+                console.log('📋 Current debug info:', debugInfo);
+                console.log('📊 Current stats:', stats);
+                console.log('🔄 Reloading data...');
+                loadDashboardData();
+              }}
+            >
+              Refresh Debug Info
+            </Button>
+            <Button 
+              size="small" 
+              style={{ marginLeft: 8 }}
+              onClick={() => {
+                console.log('🧪 Testing connection again...');
+                testDatabaseConnection();
+                checkRLSStatus();
+              }}
+            >
+              Test Connection
+            </Button>
+          </Col>
+        </Row>
+      </Card>
+
+      {/* Quick Actions */}
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
               title="Total Students"
               value={stats.totalStudents}
               prefix={<Users size={20} />}
-              valueStyle={{ color: '#1890ff' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={4}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
-              title="Present Today"
-              value={stats.presentToday}
-              prefix={<CheckCircle size={20} />}
-              valueStyle={{ color: '#52c41a' }}
+              title="Face Enrolled"
+              value={stats.enrolledStudents}
+              prefix={<UserCheck size={20} />}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={4}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
-              title="Absent Today"
-              value={stats.absentToday}
-              prefix={<XCircle size={20} />}
-              valueStyle={{ color: '#ff4d4f' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={8} lg={4}>
-          <Card>
-            <Statistic
-              title="Attendance Rate"
-              value={stats.attendanceRate.toFixed(1)}
-              suffix="%"
-              prefix={<TrendingUp size={20} />}
-              valueStyle={{ color: '#fa8c16' }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} md={8} lg={4}>
-          <Card>
-            <Statistic
-              title="Total Events"
-              value={stats.totalEvents}
+              title="Today's Events"
+              value={stats.todayEvents}
               prefix={<Calendar size={20} />}
-              valueStyle={{ color: '#722ed1' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={12} md={8} lg={4}>
+        <Col xs={24} sm={12} md={6}>
           <Card>
             <Statistic
-              title="Active Events"
-              value={stats.activeEvents}
-              prefix={<Activity size={20} />}
-              valueStyle={{ color: '#13c2c2' }}
+              title="Pending Sync"
+              value={stats.pendingSync}
+              prefix={<Database size={20} />}
             />
           </Card>
         </Col>
       </Row>
 
-      {/* Attendance Rate Progress */}
-      <Card style={{ marginBottom: 30 }}>
-        <Title level={4}>Overall Attendance Rate</Title>
-        <div style={{ marginTop: 20 }}>
-          <Progress
-            percent={Math.round(stats.attendanceRate)}
-            status="active"
-            strokeColor={{
-              '0%': '#108ee9',
-              '100%': '#87d068',
-            }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
-            <Text type="secondary">Target: 95%</Text>
-            <Text type="secondary">Current: {stats.attendanceRate.toFixed(1)}%</Text>
-          </div>
+      {/* Enrollment Progress */}
+      <Card style={{ marginTop: 24 }}>
+        <Title level={4}>Face Enrollment Progress</Title>
+        <Progress 
+          percent={enrollmentPercentage}
+          status="active"
+          format={() => `${stats.enrolledStudents}/${stats.totalStudents} students enrolled`}
+        />
+        <div style={{ marginTop: 8 }}>
+          <Text type="secondary">
+            {stats.totalStudents - stats.enrolledStudents} students remaining to enroll
+          </Text>
         </div>
       </Card>
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} lg={16}>
-          <Card
-            title={
-              <Space>
-                <Clock size={18} />
-                <Text strong>Recent Attendance</Text>
-              </Space>
-            }
-            extra={
-              <Button
-                type="link"
-                icon={<Download size={16} />}
-                onClick={() => {/* Add export functionality */}}
-              >
-                Export
-              </Button>
-            }
+      {/* Sync Status */}
+      <Card style={{ marginTop: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <Title level={4}>Data Sync Status</Title>
+            <Text type="secondary">
+              Last sync: {lastSync ? format(lastSync, 'dd/MM/yyyy HH:mm:ss') : 'Never'}
+            </Text>
+          </div>
+          <Space>
+            {syncStatus === 'syncing' && <Text>Syncing...</Text>}
+            {syncStatus === 'success' && <Text type="success">Sync successful!</Text>}
+            {syncStatus === 'error' && <Text type="danger">Sync failed</Text>}
+            <Button
+              type="primary"
+              icon={<RefreshCw />}
+              onClick={handleSync}
+              loading={syncStatus === 'syncing'}
+              disabled={stats.pendingSync === 0}
+            >
+              Sync Now ({stats.pendingSync})
+            </Button>
+          </Space>
+        </div>
+        
+        {stats.pendingSync > 0 && (
+          <Alert
+            style={{ marginTop: 16 }}
+            message="Offline Data Pending"
+            description={`You have ${stats.pendingSync} records waiting to be synced to the server. Click "Sync Now" to upload them.`}
+            type="warning"
+            showIcon
+            icon={<AlertCircle />}
+          />
+        )}
+      </Card>
+
+      {/* Quick Links */}
+      <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
+        <Col xs={24} sm={12} md={8}>
+          <Card 
+            hoverable
+            onClick={() => window.location.href = '/enroll'}
+            style={{ textAlign: 'center' }}
           >
-            <Table
-              columns={columns}
-              dataSource={recentAttendance}
-              rowKey="id"
-              loading={loading}
-              pagination={{ pageSize: 5 }}
-              size="small"
-            />
+            <UserCheck size={48} style={{ marginBottom: 16 }} />
+            <Title level={4}>Enroll Students</Title>
+            <Text>Enroll new students with face recognition</Text>
           </Card>
         </Col>
-        <Col xs={24} lg={8}>
-          <Card
-            title={
-              <Space>
-                <BarChartIcon size={18} />
-                <Text strong>Quick Actions</Text>
-              </Space>
-            }
+        <Col xs={24} sm={12} md={8}>
+          <Card 
+            hoverable
+            onClick={() => window.location.href = '/attendance'}
+            style={{ textAlign: 'center' }}
           >
-            <Space direction="vertical" style={{ width: '100%' }}>
-              <Button
-                type="primary"
-                block
-                size="large"
-                onClick={() => window.location.href = '/attendance'}
-              >
-                Take Attendance Now
-              </Button>
-              <Button
-                block
-                size="large"
-                onClick={() => window.location.href = '/enroll'}
-              >
-                Enroll New Student
-              </Button>
-              <Button
-                block
-                size="large"
-                onClick={() => window.location.href = '/events'}
-              >
-                Schedule Event
-              </Button>
-              <Button
-                block
-                size="large"
-                onClick={() => window.location.href = '/sync'}
-              >
-                Sync Data
-              </Button>
-            </Space>
-
-            <Alert
-              message="System Status"
-              description="All systems operational"
-              type="success"
-              showIcon
-              style={{ marginTop: 20 }}
-            />
+            <Camera size={48} style={{ marginBottom: 16 }} />
+            <Title level={4}>Take Attendance</Title>
+            <Text>Start face verification for attendance</Text>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={8}>
+          <Card 
+            hoverable
+            onClick={() => window.location.href = '/sync'}
+            style={{ textAlign: 'center' }}
+          >
+            <Database size={48} style={{ marginBottom: 16 }} />
+            <Title level={4}>Sync Data</Title>
+            <Text>Manage offline data and sync status</Text>
           </Card>
         </Col>
       </Row>
 
-      {/* Stats by Time Period */}
-      <Card style={{ marginTop: 30 }}>
-        <Title level={4}>Attendance Trends</Title>
-        <Row gutter={[16, 16]} style={{ marginTop: 20 }}>
-          <Col xs={24} md={12}>
-            <Card size="small">
-              <Text strong>This Week</Text>
-              <div style={{ marginTop: 10 }}>
-                <Progress
-                  percent={75}
-                  status="active"
-                  size="small"
-                />
-                <Text type="secondary">Average: 75%</Text>
-              </div>
-            </Card>
+      {/* System Status */}
+      <Card style={{ marginTop: 24 }}>
+        <Title level={4}>System Status</Title>
+        <Row gutter={[16, 16]}>
+          <Col span={12}>
+            <div>
+              <Text strong>Face Recognition Models: </Text>
+              <Text type="success">Loaded</Text>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Text strong>Camera Access: </Text>
+              <Text type="success">Available</Text>
+            </div>
           </Col>
-          <Col xs={24} md={12}>
-            <Card size="small">
-              <Text strong>This Month</Text>
-              <div style={{ marginTop: 10 }}>
-                <Progress
-                  percent={82}
-                  status="active"
-                  size="small"
-                />
-                <Text type="secondary">Average: 82%</Text>
-              </div>
-            </Card>
+          <Col span={12}>
+            <div>
+              <Text strong>Database Connection: </Text>
+              {debugInfo.connectionTest?.success ? (
+                <Text type="success">Connected</Text>
+              ) : debugInfo.connectionTest?.error ? (
+                <Text type="danger">Failed - Check Console</Text>
+              ) : (
+                <Text>Testing...</Text>
+              )}
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <Text strong>Last Heartbeat: </Text>
+              <Text>{format(new Date(), 'HH:mm:ss')}</Text>
+            </div>
           </Col>
         </Row>
       </Card>
