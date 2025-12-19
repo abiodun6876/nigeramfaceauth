@@ -1,4 +1,4 @@
-// src/pages/EnrollmentPage.tsx - UPDATED FOR ACTUAL DATABASE
+// src/pages/EnrollmentPage.tsx - UPDATED FOR YOUR DATABASE SCHEMA
 import React, { useState } from 'react';
 import { 
   Card, 
@@ -32,9 +32,9 @@ const EnrollmentPage: React.FC = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
 
   const generateMatricNumber = () => {
-    const currentYear = new Date().getFullYear().toString().slice(-2);
-    const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `ABU${currentYear}${randomNum}`;
+    const currentYear = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    return `ABU/${currentYear}/${randomNum}`;
   };
 
   const handleNext = async () => {
@@ -76,25 +76,47 @@ const EnrollmentPage: React.FC = () => {
         setLoading(true);
         const formValues = form.getFieldsValue();
         
-        // Prepare student data for database - using correct column names
-        const studentRecord = {
-          student_id: formValues.matric_number, // This is what your database expects
+        // Check if student with this matric number or student_id already exists
+        const { data: existingStudent, error: checkError } = await supabase
+          .from('students')
+          .select('*')
+          .or(`matric_number.eq.${formValues.matric_number},student_id.eq.${formValues.matric_number}`)
+          .single();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.log('Check query result:', checkError);
+        }
+
+        if (existingStudent) {
+          message.error('A student with this matric number already exists!');
+          setLoading(false);
+          return;
+        }
+
+        // Prepare student data according to your database schema
+        // Based on your data: student_id is the main identifier, matric_number is separate
+        const studentRecord: Record<string, any> = {
+          student_id: formValues.matric_number, // This should be unique
           name: formValues.name,
+          matric_number: formValues.matric_number, // Store separately too
           email: formValues.email || null,
           phone: formValues.phone || null,
           gender: formValues.gender || null,
-          matric_number: formValues.matric_number, // Also store in new column
           enrollment_status: 'enrolled',
-          face_enrolled_at: new Date().toISOString(),
-          face_embedding: result.embedding || [],
-          photo_url: result.photoUrl || '',
           face_match_threshold: 0.7,
           is_active: true,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
 
-        console.log('Saving student:', studentRecord);
+        // Add face enrollment data if available
+        if (result.success) {
+          studentRecord.face_embedding = result.embedding || [];
+          studentRecord.photo_url = result.photoUrl || null;
+          studentRecord.face_enrolled_at = new Date().toISOString();
+        }
+
+        console.log('Saving student data:', studentRecord);
 
         // Save to database
         const { data: student, error: studentError } = await supabase
@@ -106,40 +128,27 @@ const EnrollmentPage: React.FC = () => {
         if (studentError) {
           console.error('Database error:', studentError);
           
-          // Try without student_id if it fails
-          if (studentError.message.includes('student_id')) {
-            const studentRecordAlt = {
-              name: formValues.name,
-              email: formValues.email || null,
-              phone: formValues.phone || null,
-              gender: formValues.gender || null,
-              matric_number: formValues.matric_number,
-              enrollment_status: 'enrolled',
-              face_enrolled_at: new Date().toISOString(),
-              face_embedding: result.embedding || [],
-              photo_url: result.photoUrl || '',
-              face_match_threshold: 0.7,
-              is_active: true,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            };
+          // Try without the embedding if it fails
+          if (studentError.message.includes('embedding')) {
+            const simpleRecord = { ...studentRecord };
+            delete simpleRecord.face_embedding;
             
             const { data: student2, error: studentError2 } = await supabase
               .from('students')
-              .insert([studentRecordAlt])
+              .insert([simpleRecord])
               .select()
               .single();
               
             if (studentError2) {
-              throw new Error(`Database error: ${studentError2.message}`);
+              throw new Error(`Failed to save student: ${studentError2.message}`);
             }
             
-            // Save face enrollment
-            if (student2) {
-              await saveFaceEnrollment(student2.id, result);
+            // Save face data to separate table
+            if (student2 && result.embedding) {
+              await saveFaceData(student2.id, result);
             }
             
-            setEnrollmentResult(result);
+            setEnrollmentResult({ success: true, student: student2 });
             setEnrollmentComplete(true);
             message.success('Student enrolled successfully!');
             return;
@@ -150,12 +159,12 @@ const EnrollmentPage: React.FC = () => {
 
         console.log('Student saved successfully:', student);
 
-        // Save face enrollment
-        if (student) {
-          await saveFaceEnrollment(student.id, result);
+        // Save face data to separate table if needed
+        if (student && result.embedding) {
+          await saveFaceData(student.id, result);
         }
 
-        setEnrollmentResult(result);
+        setEnrollmentResult({ success: true, student });
         setEnrollmentComplete(true);
         message.success('Student enrolled successfully!');
 
@@ -176,28 +185,67 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  const saveFaceEnrollment = async (studentId: string, result: any) => {
+  const saveFaceData = async (studentId: string, result: any) => {
     try {
-      const faceEnrollmentRecord = {
+      // First check if face_enrollments table exists
+      const { data: tableExists } = await supabase
+        .from('information_schema.tables')
+        .select('table_name')
+        .eq('table_name', 'face_enrollments')
+        .single();
+
+      if (!tableExists) {
+        console.log('face_enrollments table does not exist, skipping...');
+        return;
+      }
+
+      const faceData: Record<string, any> = {
         student_id: studentId,
-        embedding: result.embedding || [],
-        photo_url: result.photoUrl || '',
-        quality_score: result.quality || 0.8,
         enrolled_at: new Date().toISOString(),
         is_active: true,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
+      // Add optional fields if they exist
+      if (result.embedding && result.embedding.length > 0) {
+        faceData.embedding = result.embedding;
+      }
+      if (result.photoUrl) {
+        faceData.photo_url = result.photoUrl;
+      }
+      if (result.quality) {
+        faceData.quality_score = result.quality;
+      }
+
+      console.log('Saving face data:', faceData);
+
       const { error: faceError } = await supabase
         .from('face_enrollments')
-        .insert([faceEnrollmentRecord]);
+        .insert([faceData]);
 
       if (faceError) {
         console.error('Face enrollment save error:', faceError);
+        // Don't throw - this is optional
       }
     } catch (error) {
-      console.error('Error saving face enrollment:', error);
+      console.error('Error saving face data:', error);
+    }
+  };
+
+  // Add academic fields form
+  const [academicForm] = Form.useForm();
+
+  const handleAcademicSubmit = async () => {
+    try {
+      const values = await academicForm.validateFields();
+      console.log('Academic values:', values);
+      // Store academic data in studentData
+      setStudentData((prev: any) => ({ ...prev, ...values }));
+      message.success('Academic information saved');
+      handleNext();
+    } catch (error) {
+      console.error('Academic form error:', error);
     }
   };
 
@@ -209,7 +257,7 @@ const EnrollmentPage: React.FC = () => {
         <div>
           <Alert
             message="Student Information"
-            description="Fill in the student's basic details"
+            description="Fill in the student's basic details. Matric number will be used as Student ID."
             type="info"
             showIcon
             style={{ marginBottom: 20 }}
@@ -228,7 +276,10 @@ const EnrollmentPage: React.FC = () => {
                 <Form.Item
                   label="Full Name *"
                   name="name"
-                  rules={[{ required: true, message: 'Please enter student name' }]}
+                  rules={[
+                    { required: true, message: 'Please enter student name' },
+                    { min: 3, message: 'Name must be at least 3 characters' }
+                  ]}
                 >
                   <Input 
                     placeholder="Enter student full name" 
@@ -243,12 +294,20 @@ const EnrollmentPage: React.FC = () => {
                 <Form.Item
                   label="Matriculation Number *"
                   name="matric_number"
-                  rules={[{ required: true, message: 'Please enter matric number' }]}
+                  tooltip="This will also be used as Student ID"
+                  rules={[
+                    { required: true, message: 'Please enter matric number' },
+                    { 
+                      pattern: /^[A-Za-z0-9\/\-]+$/, 
+                      message: 'Only letters, numbers, slashes and hyphens allowed' 
+                    }
+                  ]}
                 >
                   <Input 
-                    placeholder="e.g., ABU24001" 
+                    placeholder="e.g., ABU/2024/001" 
                     prefix={<GraduationCap size={16} />}
                     size="large"
+                    style={{ textTransform: 'uppercase' }}
                   />
                 </Form.Item>
               </Col>
@@ -276,7 +335,7 @@ const EnrollmentPage: React.FC = () => {
                   name="phone"
                 >
                   <Input 
-                    placeholder="+234 800 000 0000" 
+                    placeholder="+2348000000000" 
                     prefix={<Phone size={16} />}
                     size="large"
                   />
@@ -290,6 +349,7 @@ const EnrollmentPage: React.FC = () => {
                   <Select placeholder="Select gender" size="large">
                     <Select.Option value="male">Male</Select.Option>
                     <Select.Option value="female">Female</Select.Option>
+                    <Select.Option value="other">Other</Select.Option>
                   </Select>
                 </Form.Item>
               </Col>
@@ -302,20 +362,85 @@ const EnrollmentPage: React.FC = () => {
       title: 'Academic Details',
       icon: <BookOpen />,
       content: (
-        <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <div style={{ maxWidth: 600, margin: '0 auto' }}>
           <Alert
             message="Academic Information"
-            description="Academic details can be added later. For now, let's capture the student's face."
+            description="Fill in the student's academic details (optional)"
             type="info"
             showIcon
-            style={{ maxWidth: 600, margin: '0 auto' }}
+            style={{ marginBottom: 20 }}
           />
           
-          <div style={{ marginTop: 30 }}>
-            <Text type="secondary">
-              You can update academic information later from the student management page.
-            </Text>
-          </div>
+          <Form
+            form={academicForm}
+            layout="vertical"
+            initialValues={{
+              level: 100,
+              semester: 1
+            }}
+          >
+            <Row gutter={[16, 16]}>
+              <Col span={12}>
+                <Form.Item
+                  label="Level"
+                  name="level"
+                >
+                  <Select placeholder="Select level" size="large">
+                    <Select.Option value={100}>100 Level</Select.Option>
+                    <Select.Option value={200}>200 Level</Select.Option>
+                    <Select.Option value={300}>300 Level</Select.Option>
+                    <Select.Option value={400}>400 Level</Select.Option>
+                    <Select.Option value={500}>500 Level</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label="Semester"
+                  name="semester"
+                >
+                  <Select placeholder="Select semester" size="large">
+                    <Select.Option value={1}>First Semester</Select.Option>
+                    <Select.Option value={2}>Second Semester</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item
+                  label="Academic Session"
+                  name="academic_session"
+                >
+                  <Input 
+                    placeholder="e.g., 2024/2025" 
+                    size="large"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item
+                  label="Program"
+                  name="program"
+                >
+                  <Input 
+                    placeholder="e.g., Computer Science" 
+                    size="large"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <div style={{ marginTop: 30, textAlign: 'center' }}>
+              <Text type="secondary">
+                Note: Faculty and department information can be added later from the student management page.
+              </Text>
+            </div>
+          </Form>
         </div>
       ),
     },
@@ -332,20 +457,33 @@ const EnrollmentPage: React.FC = () => {
               </Title>
               <Card style={{ maxWidth: 500, margin: '20px auto', textAlign: 'left' }}>
                 <Title level={4}>Student Summary</Title>
-                <p><strong>Name:</strong> {studentData.name}</p>
-                <p><strong>Matric Number:</strong> 
-                  <Tag color="blue" style={{ marginLeft: 8 }}>{studentData.matric_number}</Tag>
+                <p><strong>Name:</strong> {enrollmentResult.student?.name}</p>
+                <p><strong>Student ID:</strong> 
+                  <Tag color="blue" style={{ marginLeft: 8 }}>
+                    {enrollmentResult.student?.student_id}
+                  </Tag>
                 </p>
-                {studentData.email && (
-                  <p><strong>Email:</strong> {studentData.email}</p>
+                <p><strong>Matric Number:</strong> 
+                  <Tag color="green" style={{ marginLeft: 8 }}>
+                    {enrollmentResult.student?.matric_number}
+                  </Tag>
+                </p>
+                {enrollmentResult.student?.email && (
+                  <p><strong>Email:</strong> {enrollmentResult.student.email}</p>
                 )}
                 <p><strong>Status:</strong> <Tag color="success">Enrolled</Tag></p>
+                <p><strong>Face Enrolled:</strong> {enrollmentResult?.faceCaptured ? 'Yes' : 'No'}</p>
                 <p><strong>Enrollment Date:</strong> {new Date().toLocaleDateString()}</p>
               </Card>
             </>
           ) : (
             <>
-              <CheckCircle size={64} color="#ff4d4f" />
+              <div style={{ color: '#ff4d4f', marginBottom: 20 }}>
+                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                  <circle cx="32" cy="32" r="30" stroke="#ff4d4f" strokeWidth="2"/>
+                  <path d="M22 22L42 42M42 22L22 42" stroke="#ff4d4f" strokeWidth="4" strokeLinecap="round"/>
+                </svg>
+              </div>
               <Title level={3} style={{ marginTop: 20 }}>
                 Enrollment Failed
               </Title>
@@ -368,6 +506,7 @@ const EnrollmentPage: React.FC = () => {
                 setEnrollmentComplete(false);
                 setEnrollmentResult(null);
                 form.resetFields();
+                academicForm.resetFields();
                 setStudentData({});
                 setIsCameraActive(false);
               }}
@@ -375,12 +514,21 @@ const EnrollmentPage: React.FC = () => {
               {enrollmentResult?.success ? 'Enroll Another Student' : 'Try Again'}
             </Button>
             {enrollmentResult?.success && (
-              <Button 
-                size="large"
-                onClick={() => window.location.href = '/students'}
-              >
-                View All Students
-              </Button>
+              <>
+                <Button 
+                  size="large"
+                  onClick={() => window.location.href = '/students'}
+                >
+                  View All Students
+                </Button>
+                <Button 
+                  size="large"
+                  type="default"
+                  onClick={() => window.location.href = '/attendance'}
+                >
+                  Take Attendance
+                </Button>
+              </>
             )}
           </Space>
         </div>
@@ -388,7 +536,7 @@ const EnrollmentPage: React.FC = () => {
         <div style={{ textAlign: 'center' }}>
           <Alert
             message="Face Enrollment"
-            description="Capture facial data for biometric authentication"
+            description="Capture facial data for biometric authentication. Ensure good lighting and face the camera directly."
             type="info"
             showIcon
             style={{ marginBottom: 20 }}
@@ -397,13 +545,20 @@ const EnrollmentPage: React.FC = () => {
           {studentData.name && (
             <Card style={{ marginBottom: 20, maxWidth: 600, margin: '0 auto 20px' }}>
               <Row gutter={[16, 16]}>
-                <Col span={12}>
+                <Col span={8}>
                   <Text strong>Student: </Text>
+                  <br />
                   <Text>{studentData.name}</Text>
                 </Col>
-                <Col span={12}>
-                  <Text strong>Matric: </Text>
+                <Col span={8}>
+                  <Text strong>Student ID: </Text>
+                  <br />
                   <Tag color="blue">{studentData.matric_number}</Tag>
+                </Col>
+                <Col span={8}>
+                  <Text strong>Status: </Text>
+                  <br />
+                  <Tag color="orange">Pending Face Enrollment</Tag>
                 </Col>
               </Row>
             </Card>
@@ -421,7 +576,7 @@ const EnrollmentPage: React.FC = () => {
                 <Camera size={48} style={{ marginBottom: 20, color: '#1890ff' }} />
                 <Title level={4}>Ready for Face Capture</Title>
                 <Text type="secondary" style={{ display: 'block', marginBottom: 20 }}>
-                  Click below to start the face enrollment process
+                  Ensure good lighting and face the camera directly. Click below to start.
                 </Text>
                 <Button
                   type="primary"
@@ -429,13 +584,33 @@ const EnrollmentPage: React.FC = () => {
                   icon={<Camera size={20} />}
                   onClick={() => setIsCameraActive(true)}
                   loading={loading}
+                  style={{ marginBottom: 10 }}
                 >
                   Start Face Enrollment
                 </Button>
                 <div style={{ marginTop: 20 }}>
-                  <Button onClick={handleBack}>
-                    Back to Previous Step
+                  <Text type="secondary" style={{ display: 'block', marginBottom: 10 }}>
+                    Don't have a camera or having issues?
+                  </Text>
+                  <Button 
+                    type="default"
+                    onClick={() => {
+                      // Simulate face enrollment for testing
+                      handleEnrollmentComplete({
+                        success: true,
+                        message: 'Face enrollment simulated for testing',
+                        embedding: [],
+                        photoUrl: null
+                      });
+                    }}
+                  >
+                    Simulate Enrollment (Testing)
                   </Button>
+                  <div style={{ marginTop: 20 }}>
+                    <Button onClick={handleBack}>
+                      Back to Previous Step
+                    </Button>
+                  </div>
                 </div>
               </Card>
             )}
@@ -449,7 +624,7 @@ const EnrollmentPage: React.FC = () => {
     <div style={{ padding: '20px' }}>
       <Title level={2}>Student Face Enrollment</Title>
       <Text type="secondary">
-        AFE Babalola University - Face Authentication System
+        AFE Babalola University - Biometric Face Enrollment System
       </Text>
 
       <Card style={{ marginTop: 20 }}>
@@ -477,7 +652,7 @@ const EnrollmentPage: React.FC = () => {
               )}
               <Button 
                 type="primary" 
-                onClick={handleNext} 
+                onClick={currentStep === 1 ? handleAcademicSubmit : handleNext} 
                 size="large"
                 loading={loading}
               >
