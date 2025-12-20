@@ -68,171 +68,177 @@ const EnrollmentPage: React.FC = () => {
     setCurrentStep(currentStep - 1);
   };
 
-  const handleEnrollmentComplete = async (result: any) => {
-    console.log('Face capture result:', result);
-    
-    if (result.success) {
-      try {
-        setLoading(true);
-        const formValues = form.getFieldsValue();
-        
-        // Check if student with this matric number or student_id already exists
-        const { data: existingStudent, error: checkError } = await supabase
-          .from('students')
-          .select('*')
-          .or(`matric_number.eq.${formValues.matric_number},student_id.eq.${formValues.matric_number}`)
-          .single();
-
-        if (checkError && checkError.code !== 'PGRST116') {
-          console.log('Check query result:', checkError);
-        }
-
-        if (existingStudent) {
-          message.error('A student with this matric number already exists!');
-          setLoading(false);
-          return;
-        }
-
-        // Prepare student data according to your database schema
-        // Based on your data: student_id is the main identifier, matric_number is separate
-        const studentRecord: Record<string, any> = {
-          student_id: formValues.matric_number, // This should be unique
-          name: formValues.name,
-          matric_number: formValues.matric_number, // Store separately too
-          email: formValues.email || null,
-          phone: formValues.phone || null,
-          gender: formValues.gender || null,
-          enrollment_status: 'enrolled',
-          face_match_threshold: 0.7,
-          is_active: true,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        // Add face enrollment data if available
-        if (result.success) {
-          studentRecord.face_embedding = result.embedding || [];
-          studentRecord.photo_url = result.photoUrl || null;
-          studentRecord.face_enrolled_at = new Date().toISOString();
-        }
-
-        console.log('Saving student data:', studentRecord);
-
-        // Save to database
-        const { data: student, error: studentError } = await supabase
-          .from('students')
-          .insert([studentRecord])
-          .select()
-          .single();
-
-        if (studentError) {
-          console.error('Database error:', studentError);
-          
-          // Try without the embedding if it fails
-          if (studentError.message.includes('embedding')) {
-            const simpleRecord = { ...studentRecord };
-            delete simpleRecord.face_embedding;
-            
-            const { data: student2, error: studentError2 } = await supabase
-              .from('students')
-              .insert([simpleRecord])
-              .select()
-              .single();
-              
-            if (studentError2) {
-              throw new Error(`Failed to save student: ${studentError2.message}`);
-            }
-            
-            // Save face data to separate table
-            if (student2 && result.embedding) {
-              await saveFaceData(student2.id, result);
-            }
-            
-            setEnrollmentResult({ success: true, student: student2 });
-            setEnrollmentComplete(true);
-            message.success('Student enrolled successfully!');
-            return;
-          }
-          
-          throw new Error(`Database error: ${studentError.message}`);
-        }
-
-        console.log('Student saved successfully:', student);
-
-        // Save face data to separate table if needed
-        if (student && result.embedding) {
-          await saveFaceData(student.id, result);
-        }
-
-        setEnrollmentResult({ success: true, student });
-        setEnrollmentComplete(true);
-        message.success('Student enrolled successfully!');
-
-      } catch (error: any) {
-        console.error('Enrollment error:', error);
-        message.error(`Failed to save student: ${error.message || 'Unknown error'}`);
-        
-        setEnrollmentResult({
-          success: false,
-          message: error.message || 'Failed to save student data'
-        });
-      } finally {
-        setLoading(false);
-      }
-    } else {
-      message.error(`Face capture failed: ${result.message}`);
-      setEnrollmentResult(result);
-    }
-  };
-
-  const saveFaceData = async (studentId: string, result: any) => {
+  // Update the handleEnrollmentComplete function - remove is_active field
+const handleEnrollmentComplete = async (result: any) => {
+  console.log('Face capture result:', result);
+  
+  if (result.success) {
     try {
-      // First check if face_enrollments table exists
-      const { data: tableExists } = await supabase
-        .from('information_schema.tables')
-        .select('table_name')
-        .eq('table_name', 'face_enrollments')
+      setLoading(true);
+      const formValues = form.getFieldsValue();
+      
+      // Check if student with this matric number or student_id already exists
+      const { data: existingStudent, error: checkError } = await supabase
+        .from('students')
+        .select('*')
+        .or(`matric_number.eq.${formValues.matric_number},student_id.eq.${formValues.matric_number}`)
         .single();
 
-      if (!tableExists) {
-        console.log('face_enrollments table does not exist, skipping...');
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.log('Check query result:', checkError);
+      }
+
+      if (existingStudent) {
+        message.error('A student with this matric number already exists!');
+        setLoading(false);
         return;
       }
 
-      const faceData: Record<string, any> = {
-        student_id: studentId,
-        enrolled_at: new Date().toISOString(),
-        is_active: true,
+      // Prepare student data according to your database schema
+      const studentRecord: Record<string, any> = {
+        student_id: formValues.matric_number, // This should be unique
+        name: formValues.name,
+        matric_number: formValues.matric_number, // Store separately too
+        email: formValues.email || null,
+        phone: formValues.phone || null,
+        gender: formValues.gender || null,
+        enrollment_status: 'enrolled',
+        face_match_threshold: 0.7,
+        // REMOVE: is_active: true, // This column doesn't exist in your table
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      // Add optional fields if they exist
-      if (result.embedding && result.embedding.length > 0) {
-        faceData.embedding = result.embedding;
-      }
-      if (result.photoUrl) {
-        faceData.photo_url = result.photoUrl;
-      }
-      if (result.quality) {
-        faceData.quality_score = result.quality;
+      // Add academic fields if they exist
+      const academicValues = academicForm.getFieldsValue();
+      if (academicValues.level) studentRecord.level = academicValues.level;
+      if (academicValues.semester) studentRecord.semester = academicValues.semester;
+      if (academicValues.academic_session) studentRecord.academic_session = academicValues.academic_session;
+      if (academicValues.program) studentRecord.program = academicValues.program;
+
+      // Add face enrollment data if available
+      if (result.success) {
+        studentRecord.face_embedding = result.embedding || [];
+        studentRecord.photo_url = result.photoUrl || null;
+        studentRecord.face_enrolled_at = new Date().toISOString();
       }
 
-      console.log('Saving face data:', faceData);
+      console.log('Saving student data:', studentRecord);
 
-      const { error: faceError } = await supabase
-        .from('face_enrollments')
-        .insert([faceData]);
+      // Save to database
+      const { data: student, error: studentError } = await supabase
+        .from('students')
+        .insert([studentRecord])
+        .select()
+        .single();
 
-      if (faceError) {
-        console.error('Face enrollment save error:', faceError);
-        // Don't throw - this is optional
+      if (studentError) {
+        console.error('Database error:', studentError);
+        
+        // Try without the embedding if it fails
+        if (studentError.message.includes('embedding')) {
+          const simpleRecord = { ...studentRecord };
+          delete simpleRecord.face_embedding;
+          
+          const { data: student2, error: studentError2 } = await supabase
+            .from('students')
+            .insert([simpleRecord])
+            .select()
+            .single();
+            
+          if (studentError2) {
+            throw new Error(`Failed to save student: ${studentError2.message}`);
+          }
+          
+          // Save face data to separate table
+          if (student2 && result.embedding) {
+            await saveFaceData(student2.id, result);
+          }
+          
+          setEnrollmentResult({ success: true, student: student2 });
+          setEnrollmentComplete(true);
+          message.success('Student enrolled successfully!');
+          return;
+        }
+        
+        throw new Error(`Database error: ${studentError.message}`);
       }
-    } catch (error) {
-      console.error('Error saving face data:', error);
+
+      console.log('Student saved successfully:', student);
+
+      // Save face data to separate table if needed
+      if (student && result.embedding) {
+        await saveFaceData(student.id, result);
+      }
+
+      setEnrollmentResult({ success: true, student });
+      setEnrollmentComplete(true);
+      message.success('Student enrolled successfully!');
+
+    } catch (error: any) {
+      console.error('Enrollment error:', error);
+      message.error(`Failed to save student: ${error.message || 'Unknown error'}`);
+      
+      setEnrollmentResult({
+        success: false,
+        message: error.message || 'Failed to save student data'
+      });
+    } finally {
+      setLoading(false);
     }
-  };
+  } else {
+    message.error(`Face capture failed: ${result.message}`);
+    setEnrollmentResult(result);
+  }
+};
 
+  const saveFaceData = async (studentId: string, result: any) => {
+  try {
+    // First check if face_enrollments table exists
+    const { data: tableExists } = await supabase
+      .from('information_schema.tables')
+      .select('table_name')
+      .eq('table_name', 'face_enrollments')
+      .single();
+
+    if (!tableExists) {
+      console.log('face_enrollments table does not exist, skipping...');
+      return;
+    }
+
+    const faceData: Record<string, any> = {
+      student_id: studentId,
+      enrolled_at: new Date().toISOString(),
+      // REMOVE: is_active: true, // Remove if column doesn't exist
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Add optional fields if they exist
+    if (result.embedding && result.embedding.length > 0) {
+      faceData.embedding = result.embedding;
+    }
+    if (result.photoUrl) {
+      faceData.photo_url = result.photoUrl;
+    }
+    if (result.quality) {
+      faceData.quality_score = result.quality;
+    }
+
+    console.log('Saving face data:', faceData);
+
+    const { error: faceError } = await supabase
+      .from('face_enrollments')
+      .insert([faceData]);
+
+    if (faceError) {
+      console.error('Face enrollment save error:', faceError);
+      // Don't throw - this is optional
+    }
+  } catch (error) {
+    console.error('Error saving face data:', error);
+  }
+};
   // Add academic fields form
   const [academicForm] = Form.useForm();
 
