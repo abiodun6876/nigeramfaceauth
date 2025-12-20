@@ -1,5 +1,5 @@
 // src/pages/EnrollmentPage.tsx - UPDATED FOR YOUR DATABASE SCHEMA
-import React, { useState } from 'react';
+import React, { useState,  useEffect } from 'react';
 import { 
   Card, 
   Form, 
@@ -36,6 +36,12 @@ const EnrollmentPage: React.FC = () => {
     const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     return `ABU/${currentYear}/${randomNum}`;
   };
+
+
+  // Inside your component, add:
+useEffect(() => {
+  console.log('studentData updated:', studentData);
+}, [studentData]);
 
  const handleNext = async () => {
   try {
@@ -78,26 +84,35 @@ const EnrollmentPage: React.FC = () => {
     setCurrentStep(currentStep - 1);
   };
 
+  
   const handleEnrollmentComplete = async (result: any) => {
   console.log('Face capture result:', result);
+  console.log('Current studentData:', studentData); // Check what's in studentData
   
   if (result.success) {
     try {
       setLoading(true);
-      const formValues = form.getFieldsValue();
       
-      // ✅ FIX: Ensure student_id is always set and not null
-      const studentId = formValues.matric_number?.trim() || generateMatricNumber();
+      // ✅ Use studentData from state instead of form.getFieldsValue()
+      const studentName = studentData.name?.trim();
+      const studentId = studentData.matric_number?.trim() || generateMatricNumber();
+      
+      if (!studentName) {
+        throw new Error('Student name is required. Please go back and fill in the student name.');
+      }
+      
       if (!studentId) {
         throw new Error('Student ID cannot be empty');
       }
+
+      console.log('Enrolling student:', { name: studentName, id: studentId });
 
       // Check if student with this student_id already exists
       const { data: existingStudent, error: checkError } = await supabase
         .from('students')
         .select('*')
-        .eq('student_id', studentId) // Use direct comparison
-        .maybeSingle(); // Use maybeSingle instead of single
+        .eq('student_id', studentId)
+        .maybeSingle();
 
       if (checkError) {
         console.log('Check query error:', checkError);
@@ -111,29 +126,23 @@ const EnrollmentPage: React.FC = () => {
 
       // Prepare student data according to your database schema
       const studentRecord: Record<string, any> = {
-        student_id: studentId, // ✅ Now guaranteed to have a value
-        name: formValues.name?.trim() || '',
-        matric_number: studentId, // ✅ Use the same ID
-        email: formValues.email?.trim() || null,
-        phone: formValues.phone?.trim() || null,
-        gender: formValues.gender || null,
+        student_id: studentId,
+        name: studentName, // ✅ Use studentData.name
+        matric_number: studentId,
+        email: studentData.email?.trim() || null,
+        phone: studentData.phone?.trim() || null,
+        gender: studentData.gender || null,
         enrollment_status: 'enrolled',
         face_match_threshold: 0.7,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
 
-      // Add validation
-      if (!studentRecord.name) {
-        throw new Error('Student name is required');
-      }
-
-      // Add academic fields if they exist
-      const academicValues = academicForm.getFieldsValue();
-      if (academicValues.level) studentRecord.level = academicValues.level;
-      if (academicValues.semester) studentRecord.semester = academicValues.semester;
-      if (academicValues.academic_session) studentRecord.academic_session = academicValues.academic_session;
-      if (academicValues.program) studentRecord.program = academicValues.program;
+      // Add academic fields from studentData
+      if (studentData.level) studentRecord.level = studentData.level;
+      if (studentData.semester) studentRecord.semester = studentData.semester;
+      if (studentData.academic_session) studentRecord.academic_session = studentData.academic_session;
+      if (studentData.program) studentRecord.program = studentData.program;
 
       // Add face enrollment data if available
       if (result.success) {
@@ -190,7 +199,11 @@ const EnrollmentPage: React.FC = () => {
         await saveFaceData(student.id, result);
       }
 
-      setEnrollmentResult({ success: true, student });
+      setEnrollmentResult({ 
+        success: true, 
+        student,
+        faceCaptured: true 
+      });
       setEnrollmentComplete(true);
       message.success('Student enrolled successfully!');
 
@@ -298,7 +311,7 @@ const EnrollmentPage: React.FC = () => {
           >
             <Row gutter={[16, 16]}>
               <Col span={24}>
-               // In the Basic Information form section, update the name field:
+               
 <Form.Item
   label="Full Name *"
   name="name"
@@ -489,6 +502,13 @@ const EnrollmentPage: React.FC = () => {
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           {enrollmentResult?.success ? (
             <>
+            
+<div style={{ marginBottom: 20, padding: 10, backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
+  <Text strong>Debug Info:</Text>
+  <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>
+    studentData: {JSON.stringify(studentData)}
+  </div>
+</div>
               <CheckCircle size={64} color="#52c41a" />
               <Title level={3} style={{ marginTop: 20 }}>
                 Enrollment Complete!
