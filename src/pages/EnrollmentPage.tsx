@@ -37,39 +37,39 @@ const EnrollmentPage: React.FC = () => {
     return `ABU/${currentYear}/${randomNum}`;
   };
 
-  const handleNext = async () => {
-    try {
-      if (currentStep === 0) {
-        await form.validateFields(['name', 'matric_number']);
-        const values = form.getFieldsValue();
-        
-        if (!values.matric_number) {
-          values.matric_number = generateMatricNumber();
-          form.setFieldValue('matric_number', values.matric_number);
-        }
+ const handleNext = async () => {
+  try {
+    if (currentStep === 0) {
+      await form.validateFields(['name']); // Only validate name
+      const values = form.getFieldsValue();
+      
+      // ✅ Always generate matric number if not provided or empty
+      if (!values.matric_number?.trim()) {
+        values.matric_number = generateMatricNumber();
+        form.setFieldValue('matric_number', values.matric_number);
+      }
 
-        setStudentData(values);
-        setCurrentStep(1);
-      } else if (currentStep === 1) {
-        setCurrentStep(2);
-      }
-    } catch (error: any) {
-      console.error('Form validation failed:', error);
-      if (error.errorFields) {
-        const errorMessages = error.errorFields.map((field: any) => field.errors[0]).join(', ');
-        message.error(`Please fix: ${errorMessages}`);
-      } else {
-        message.error('Please fill all required fields');
-      }
+      setStudentData(values);
+      setCurrentStep(1);
+    } else if (currentStep === 1) {
+      setCurrentStep(2);
     }
-  };
+  } catch (error: any) {
+    console.error('Form validation failed:', error);
+    if (error.errorFields) {
+      const errorMessages = error.errorFields.map((field: any) => field.errors[0]).join(', ');
+      message.error(`Please fix: ${errorMessages}`);
+    } else {
+      message.error('Please fill all required fields');
+    }
+  }
+};
 
   const handleBack = () => {
     setCurrentStep(currentStep - 1);
   };
 
-  // Update the handleEnrollmentComplete function - remove is_active field
-const handleEnrollmentComplete = async (result: any) => {
+  const handleEnrollmentComplete = async (result: any) => {
   console.log('Face capture result:', result);
   
   if (result.success) {
@@ -77,37 +77,47 @@ const handleEnrollmentComplete = async (result: any) => {
       setLoading(true);
       const formValues = form.getFieldsValue();
       
-      // Check if student with this matric number or student_id already exists
+      // ✅ FIX: Ensure student_id is always set and not null
+      const studentId = formValues.matric_number?.trim() || generateMatricNumber();
+      if (!studentId) {
+        throw new Error('Student ID cannot be empty');
+      }
+
+      // Check if student with this student_id already exists
       const { data: existingStudent, error: checkError } = await supabase
         .from('students')
         .select('*')
-        .or(`matric_number.eq.${formValues.matric_number},student_id.eq.${formValues.matric_number}`)
-        .single();
+        .eq('student_id', studentId) // Use direct comparison
+        .maybeSingle(); // Use maybeSingle instead of single
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        console.log('Check query result:', checkError);
+      if (checkError) {
+        console.log('Check query error:', checkError);
       }
 
       if (existingStudent) {
-        message.error('A student with this matric number already exists!');
+        message.error('A student with this ID already exists!');
         setLoading(false);
         return;
       }
 
       // Prepare student data according to your database schema
       const studentRecord: Record<string, any> = {
-        student_id: formValues.matric_number, // This should be unique
-        name: formValues.name,
-        matric_number: formValues.matric_number, // Store separately too
-        email: formValues.email || null,
-        phone: formValues.phone || null,
+        student_id: studentId, // ✅ Now guaranteed to have a value
+        name: formValues.name?.trim() || '',
+        matric_number: studentId, // ✅ Use the same ID
+        email: formValues.email?.trim() || null,
+        phone: formValues.phone?.trim() || null,
         gender: formValues.gender || null,
         enrollment_status: 'enrolled',
         face_match_threshold: 0.7,
-        // REMOVE: is_active: true, // This column doesn't exist in your table
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
+
+      // Add validation
+      if (!studentRecord.name) {
+        throw new Error('Student name is required');
+      }
 
       // Add academic fields if they exist
       const academicValues = academicForm.getFieldsValue();
