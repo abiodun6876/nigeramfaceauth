@@ -34,7 +34,7 @@ import LecturerAttendancePage from './pages/LecturerAttendancePage';
 
 import { supabase } from './lib/supabase';
 import './App.css';
-import CourseManagementPage from './pages/CourseManagementPage';
+import CourseManagementPage from './pages/CourseManagement';
 
 
 const { Header, Sider, Content, Footer } = Layout;

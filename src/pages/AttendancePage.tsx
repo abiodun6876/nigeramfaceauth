@@ -687,6 +687,7 @@ const AttendancePage: React.FC = () => {
         )}
       </Modal>
     </div>
+    
   );
 };
 
