@@ -14,25 +14,23 @@ import {
   Statistic,
   Modal,
   InputNumber,
-  message
+  message,
+  Grid
 } from 'antd';
 import { Camera } from 'lucide-react';
 import { UserAddOutlined, TeamOutlined } from '@ant-design/icons';
 import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 
-// Add at the top of your component file if not already there
-import { Grid } from 'antd';
-const { useBreakpoint } = Grid;
-
-// Inside your component function:
-const screens = useBreakpoint();
-const isMobile = !screens.md;
-
 const { Title, Text } = Typography;
 const { Option } = Select;
+const { useBreakpoint } = Grid;
 
 const AttendancePage: React.FC = () => {
+  // Move useBreakpoint INSIDE the component
+  const screens = useBreakpoint();
+  const isMobile = !screens.md;
+  
   const [courses, setCourses] = useState<any[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [students, setStudents] = useState<any[]>([]);
@@ -563,77 +561,68 @@ const AttendancePage: React.FC = () => {
         <Row gutter={[16, 16]} align="middle">
           <Col span={8}>
             <Text strong>Select Course:</Text>
-          <Select
-  style={{ 
-    width: '100%', 
-    marginTop: 8,
-    fontSize: isMobile ? '14px' : '16px'
-  }}
-  placeholder="Choose a course"
-  value={selectedCourse}
-  onChange={handleCourseSelect}
-  loading={loading}
-  dropdownStyle={{
-    maxHeight: isMobile ? '300px' : '400px'
-  }}
-  showSearch
-  filterOption={(input, option) => {
-    const course = courses.find(c => c.id === option?.value);
-    if (!course) return false;
-    
-    const searchText = input.toLowerCase();
-    return (
-      course.code.toLowerCase().includes(searchText) ||
-      course.title.toLowerCase().includes(searchText) ||
-      course.level.toString().includes(input) ||
-      (course.department_name && course.department_name.toLowerCase().includes(searchText))
-    );
-  }}
-  size="large"
->
-  {courses.map(course => (
-    <Option key={course.id} value={course.id}>
-      <div style={{ padding: '8px 0' }}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          marginBottom: 4 
-        }}>
-          <strong style={{ color: '#1890ff' }}>{course.code}</strong>
-          <span style={{ 
-            fontSize: isMobile ? '11px' : '12px', 
-            background: course.level === 100 ? '#e6f7ff' : 
-                       course.level === 200 ? '#f6ffed' : 
-                       course.level === 300 ? '#fff7e6' : '#fff1f0',
-            color: course.level === 100 ? '#1890ff' : 
-                   course.level === 200 ? '#52c41a' : 
-                   course.level === 300 ? '#fa8c16' : '#f5222d',
-            padding: '2px 6px', 
-            borderRadius: 4,
-            fontWeight: 'bold'
-          }}>
-            L{course.level}
-          </span>
-        </div>
-        <div style={{ 
-          fontSize: isMobile ? '13px' : '14px', 
-          color: '#333',
-          marginBottom: 4
-        }}>
-          {course.title}
-        </div>
-        {course.department_name && (
-          <div style={{ 
-            fontSize: isMobile ? '11px' : '12px', 
-            color: '#666' 
-          }}>
-            {course.department_name}
-          </div>
-        )}
-      </div>
-    </Option>
-  ))}
-</Select>
+            <Select
+              style={{ 
+                width: '100%', 
+                marginTop: 8,
+                fontSize: isMobile ? '14px' : '16px'
+              }}
+              placeholder="Choose a course"
+              value={selectedCourse}
+              onChange={handleCourseSelect}
+              loading={loading}
+              dropdownStyle={{
+                maxHeight: isMobile ? '300px' : '400px'
+              }}
+              showSearch
+              filterOption={(input, option) => {
+                const course = courses.find(c => c.id === option?.value);
+                if (!course) return false;
+                
+                const searchText = input.toLowerCase();
+                return (
+                  course.code.toLowerCase().includes(searchText) ||
+                  course.title.toLowerCase().includes(searchText) ||
+                  course.level.toString().includes(input)
+                );
+              }}
+              size="large"
+            >
+              {courses.map(course => (
+                <Option key={course.id} value={course.id}>
+                  <div style={{ padding: '8px 0' }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between',
+                      marginBottom: 4 
+                    }}>
+                      <strong style={{ color: '#1890ff' }}>{course.code}</strong>
+                      <span style={{ 
+                        fontSize: isMobile ? '11px' : '12px', 
+                        background: course.level === 100 ? '#e6f7ff' : 
+                                  course.level === 200 ? '#f6ffed' : 
+                                  course.level === 300 ? '#fff7e6' : '#fff1f0',
+                        color: course.level === 100 ? '#1890ff' : 
+                              course.level === 200 ? '#52c41a' : 
+                              course.level === 300 ? '#fa8c16' : '#f5222d',
+                        padding: '2px 6px', 
+                        borderRadius: 4,
+                        fontWeight: 'bold'
+                      }}>
+                        L{course.level}
+                      </span>
+                    </div>
+                    <div style={{ 
+                      fontSize: isMobile ? '13px' : '14px', 
+                      color: '#333',
+                      marginBottom: 4
+                    }}>
+                      {course.title}
+                    </div>
+                  </div>
+                </Option>
+              ))}
+            </Select>
           </Col>
           
           <Col span={8}>
@@ -753,7 +742,6 @@ const AttendancePage: React.FC = () => {
         )}
       </Modal>
     </div>
-
   );
 };
 
