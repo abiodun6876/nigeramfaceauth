@@ -93,21 +93,12 @@ const HomeCards = () => {
       path: '/attendance',
       color: '#52c41a',
     },
-   
-    {
-      key: 'sync',
-      title: 'Sync Data',
-      description: 'Sync offline attendance records',
-      icon: <Database size={isMobile ? 24 : 32} />,
-      path: '/sync',
-      color: '#f5222d',
-    },
   ];
 
   return (
     <div style={{ padding: isMobile ? '10px' : '20px' }}>
       <Title level={3} style={{ marginBottom: 24, textAlign: isMobile ? 'center' : 'left' }}>
-        Welcome to ABUAD Face Attendance System
+        Welcome To ABUAD Face Attendance System
       </Title>
 
       <Row gutter={[16, 16]} justify={isMobile ? 'center' : 'start'}>

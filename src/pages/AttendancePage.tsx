@@ -19,7 +19,9 @@ import {
   DatePicker,
   Tabs,
   Progress,
-  Badge
+  Badge,
+  Divider,
+  Descriptions
 } from 'antd';
 import { Camera, Calendar, CheckCircle, XCircle, Users } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
@@ -50,6 +52,11 @@ const AttendancePage: React.FC = () => {
     presentToday: 0,
     attendanceRate: 0
   });
+  
+  // Face recognition result state
+  const [faceResult, setFaceResult] = useState<any>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureStatus, setCaptureStatus] = useState<string>('Ready to capture');
 
   // Fetch all courses
   const fetchCourses = async () => {
@@ -124,7 +131,12 @@ const AttendancePage: React.FC = () => {
   const handleAttendanceComplete = async (result: any) => {
     console.log('Face recognition result:', result);
     
+    // Update face result state
+    setFaceResult(result);
+    
     if (result.success && result.student) {
+      setCaptureStatus('Captured Successfully');
+      
       try {
         if (!selectedCourseData) {
           message.error('Please select a course first');
@@ -213,10 +225,43 @@ const AttendancePage: React.FC = () => {
         message.error('Failed to save attendance: ' + error.message);
       }
     } else {
+      setCaptureStatus('Capture Failed');
       message.error(`Face recognition failed: ${result.message || 'Unknown error'}`);
+    }
+    
+    // Auto-hide result after 5 seconds
+    setTimeout(() => {
+      setFaceResult(null);
+      setCaptureStatus('Ready to capture');
+    }, 5000);
+  };
+
+  // Handle face capture status
+  const handleFaceCaptureStatus = (status: any) => {
+    if (status.isCapturing) {
+      setIsCapturing(true);
+      setCaptureStatus('Capturing...');
+    } else if (status.message) {
+      setCaptureStatus(status.message);
     }
   };
 
+  // Start camera function
+  const startFaceAttendance = () => {
+    setIsCameraActive(true);
+    setFaceResult(null);
+    setCaptureStatus('Camera is active. Make sure face is clearly visible.');
+  };
+
+  // Stop camera function
+  const stopCamera = () => {
+    setIsCameraActive(false);
+    setFaceResult(null);
+    setIsCapturing(false);
+    setCaptureStatus('Ready to capture');
+  };
+
+  // Handle mark all present
   const handleMarkAllPresent = async () => {
     if (!selectedCourseData) {
       message.error('Please select a course first');
@@ -293,12 +338,14 @@ const AttendancePage: React.FC = () => {
     });
   };
 
+  // Handle manual mark present - FIXED: Added this missing function
   const handleManualMarkPresent = (record: any) => {
     setSelectedStudent(record);
     setScoreInputValue(record.score || 2.00);
     setScoreModalVisible(true);
   };
 
+  // Save manual attendance - FIXED: Added this missing function
   const saveManualAttendance = async () => {
     if (!selectedStudent || !selectedCourseData) {
       message.error('No student or course selected');
@@ -558,8 +605,9 @@ const AttendancePage: React.FC = () => {
                   type="primary"
                   size="large"
                   icon={<Camera />}
-                  onClick={() => setIsCameraActive(true)}
+                  onClick={startFaceAttendance}
                   loading={loading}
+                  disabled={isCameraActive}
                 >
                   Start Face Attendance
                 </Button>
@@ -585,6 +633,120 @@ const AttendancePage: React.FC = () => {
             </div>
           </Card>
 
+          {/* Result Display Section similar to WhatsApp image */}
+          {isCameraActive && (
+            <Card style={{ marginBottom: 20 }}>
+              <div style={{ textAlign: 'center' }}>
+                <Alert
+                  message="Face Attendance Active"
+                  description={`Position student in front of camera. System will automatically mark attendance for ${selectedCourseData?.title}.`}
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 20 }}
+                />
+                
+                {/* Face Camera Component */}
+                {/* Note: You may need to update your FaceCamera component to accept onCaptureStatus prop */}
+                <FaceCamera
+                  mode="attendance"
+                  onAttendanceComplete={handleAttendanceComplete}
+                  onCaptureStatus={handleFaceCaptureStatus}
+                />
+                
+                {/* Result Section */}
+                <Divider>Result</Divider>
+                
+                <Card 
+                  style={{ 
+                    maxWidth: 600, 
+                    margin: '0 auto 20px',
+                    backgroundColor: faceResult?.success ? '#f6ffed' : '#fff2f0',
+                    borderColor: faceResult?.success ? '#b7eb8f' : '#ffccc7'
+                  }}
+                >
+                  <Descriptions column={1} size="small">
+                    <Descriptions.Item label="Status">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {faceResult?.success ? (
+                          <>
+                            <CheckCircle color="#52c41a" size={16} />
+                            <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                              {captureStatus}
+                            </span>
+                          </>
+                        ) : faceResult ? (
+                          <>
+                            <XCircle color="#f5222d" size={16} />
+                            <span style={{ color: '#f5222d' }}>{captureStatus}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera color="#1890ff" size={16} />
+                            <span>{captureStatus}</span>
+                          </>
+                        )}
+                      </div>
+                    </Descriptions.Item>
+                    
+                    {faceResult?.student && (
+                      <>
+                        <Descriptions.Item label="Student Name">
+                          <Text strong>{faceResult.student.name}</Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Matric Number">
+                          <Text strong>{faceResult.student.matric_number}</Text>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Confidence">
+                         
+                        <Progress 
+                          percent={Number((faceResult.confidence * 100).toFixed(1))} 
+                          size="small" 
+                          strokeColor={
+                            faceResult.confidence > 0.8 ? '#52c41a' : 
+                            faceResult.confidence > 0.6 ? '#faad14' : '#f5222d'
+                          }
+                          format={() => `${(faceResult.confidence * 100).toFixed(1)}%`}
+                        />
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Course">
+                          <Tag color="blue">{selectedCourseData?.code}</Tag>
+                        </Descriptions.Item>
+                        <Descriptions.Item label="Time">
+                          {dayjs().format('HH:mm:ss')}
+                        </Descriptions.Item>
+                      </>
+                    )}
+                  </Descriptions>
+                </Card>
+                
+                <div style={{ marginTop: 20 }}>
+                  <Button 
+                    type="default" 
+                    size="large"
+                    onClick={stopCamera}
+                    danger={isCapturing}
+                  >
+                    Stop Camera
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Footer similar to WhatsApp image */}
+              <Divider />
+              <div style={{ textAlign: 'center', color: '#666', fontSize: '0.9em' }}>
+                <Text type="secondary">
+                  AFE Babalola University Face Authentication System © 2025
+                </Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: '0.8em' }}>
+                  Developed for Daily Student Attendance with Offline Support
+                  <br />
+                  Database Connected
+                </Text>
+              </div>
+            </Card>
+          )}
+
           <Card title={
             <div>
               <span>Attendance Records</span>
@@ -606,35 +768,6 @@ const AttendancePage: React.FC = () => {
               }}
             />
           </Card>
-
-          {isCameraActive && (
-            <Card style={{ marginTop: 20 }}>
-              <div style={{ textAlign: 'center' }}>
-                <Alert
-                  message="Face Attendance Active"
-                  description={`Position student in front of camera. System will automatically mark attendance for ${selectedCourseData?.title}.`}
-                  type="info"
-                  showIcon
-                  style={{ marginBottom: 20 }}
-                />
-                
-                <FaceCamera
-                  mode="attendance"
-                  onAttendanceComplete={handleAttendanceComplete}
-                />
-                
-                <div style={{ marginTop: 20 }}>
-                  <Button 
-                    type="default" 
-                    size="large"
-                    onClick={() => setIsCameraActive(false)}
-                  >
-                    Stop Camera
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
         </>
       ) : (
         <Card style={{ marginTop: 20 }}>

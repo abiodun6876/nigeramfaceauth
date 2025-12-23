@@ -1,4 +1,4 @@
-// src/components/FaceCamera.tsx - DEBUG VERSION
+// src/components/FaceCamera.tsx - UPDATED VERSION
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, Button, Alert, Typography, Space, Progress, Row, Col } from 'antd';
 import { Camera, RefreshCw, CheckCircle, User, Video, VideoOff } from 'lucide-react';
@@ -10,13 +10,15 @@ interface FaceCameraProps {
   student?: any;
   onEnrollmentComplete?: (result: any) => void;
   onAttendanceComplete?: (result: any) => void;
+  onCaptureStatus?: (status: any) => void; // NEW: Added this prop
 }
 
 const FaceCamera: React.FC<FaceCameraProps> = ({
   mode,
   student,
   onEnrollmentComplete,
-  onAttendanceComplete
+  onAttendanceComplete,
+  onCaptureStatus // NEW: Accept the prop
 }) => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -28,6 +30,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Send status updates to parent
+  const updateCaptureStatus = (statusUpdate: any) => {
+    if (onCaptureStatus) {
+      onCaptureStatus(statusUpdate);
+    }
+  };
 
   // Collect debug info
   useEffect(() => {
@@ -88,9 +97,19 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     console.log('Starting camera...');
     setError(null);
     
+    // Send status update
+    updateCaptureStatus({ 
+      isCapturing: false, 
+      message: 'Starting camera...' 
+    });
+    
     // Check basic requirements
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setError('Your browser does not support camera access. Try Chrome, Firefox, or Edge.');
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Browser does not support camera access' 
+      });
       return;
     }
 
@@ -101,6 +120,10 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     
     if (!isSecure) {
       setError(`Camera requires HTTPS or localhost. You are on: ${window.location.protocol}//${window.location.hostname}`);
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'HTTPS or localhost required' 
+      });
       return;
     }
 
@@ -157,6 +180,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
         
         setIsCameraActive(true);
         console.log('Camera is now active');
+        
+        // Send status update
+        updateCaptureStatus({ 
+          isCapturing: false, 
+          message: 'Camera is active. Make sure face is clearly visible.',
+          cameraActive: true
+        });
       }
       
     } catch (err: any) {
@@ -178,6 +208,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       
       setError(errorMessage);
       setIsCameraActive(false);
+      
+      // Send status update
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Camera failed to start',
+        error: err.message
+      });
     }
   };
 
@@ -191,12 +228,23 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     }
     setIsCameraActive(false);
     setCapturedImage(null);
+    
+    // Send status update
+    updateCaptureStatus({ 
+      isCapturing: false, 
+      message: 'Camera stopped',
+      cameraActive: false
+    });
   };
 
   // Simple capture function
   const captureImage = () => {
     if (!isCameraActive || !videoRef.current || !canvasRef.current) {
       setError('Camera is not ready');
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Camera not ready for capture' 
+      });
       return null;
     }
 
@@ -206,6 +254,10 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     
     if (!ctx) {
       setError('Canvas context not available');
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Canvas context error' 
+      });
       return null;
     }
 
@@ -219,12 +271,26 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const handleCapture = () => {
     if (!isCameraActive) {
       setError('Please start the camera first');
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Start camera first' 
+      });
       return;
     }
 
+    // Send status update
+    updateCaptureStatus({ 
+      isCapturing: true, 
+      message: 'Capturing face...' 
+    });
+    
     const image = captureImage();
     if (!image) {
       setError('Failed to capture image');
+      updateCaptureStatus({ 
+        isCapturing: false, 
+        message: 'Capture failed' 
+      });
       return;
     }
 
@@ -235,6 +301,12 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const processCapture = (imageData: string) => {
     setIsCapturing(true);
     setProgress(0);
+
+    // Send status update
+    updateCaptureStatus({ 
+      isCapturing: true, 
+      message: 'Processing face capture...' 
+    });
 
     const interval = setInterval(() => {
       setProgress(prev => {
@@ -259,6 +331,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
             setTimeout(() => {
               setIsCapturing(false);
               onEnrollmentComplete?.(result);
+              
+              // Send status update
+              updateCaptureStatus({ 
+                isCapturing: false, 
+                message: 'Enrollment complete!',
+                success: true
+              });
             }, 1000);
           } else {
             Object.assign(result, {
@@ -273,6 +352,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
             setTimeout(() => {
               setIsCapturing(false);
               onAttendanceComplete?.(result);
+              
+              // Send status update
+              updateCaptureStatus({ 
+                isCapturing: false, 
+                message: 'Attendance recorded!',
+                success: true
+              });
             }, 1000);
           }
           
@@ -287,6 +373,12 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const useSimulation = () => {
     setIsCapturing(true);
     setProgress(0);
+    
+    // Send status update
+    updateCaptureStatus({ 
+      isCapturing: true, 
+      message: 'Starting simulation...' 
+    });
 
     const interval = setInterval(() => {
       setProgress(prev => {
@@ -311,6 +403,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
             setTimeout(() => {
               setIsCapturing(false);
               onEnrollmentComplete?.(result);
+              
+              // Send status update
+              updateCaptureStatus({ 
+                isCapturing: false, 
+                message: 'Simulation: Enrollment complete',
+                success: true
+              });
             }, 500);
           } else {
             Object.assign(result, {
@@ -325,6 +424,13 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
             setTimeout(() => {
               setIsCapturing(false);
               onAttendanceComplete?.(result);
+              
+              // Send status update
+              updateCaptureStatus({ 
+                isCapturing: false, 
+                message: 'Simulation: Attendance recorded',
+                success: true
+              });
             }, 500);
           }
           
