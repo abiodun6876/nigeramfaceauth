@@ -46,7 +46,7 @@ const CourseRegistrationPage: React.FC = () => {
   const [searching, setSearching] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [students, setStudents] = useState<any[]>([]);
-  const [matricNumber, setMatricNumber] = useState('');
+  const [studentId, setStudentId] = useState(''); // Changed from matricNumber
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
   const [isSelectAll, setIsSelectAll] = useState(false);
 
@@ -61,7 +61,6 @@ const CourseRegistrationPage: React.FC = () => {
       const { data, error } = await supabase
         .from('courses')
         .select('*, department:departments(*)')
-        .eq('is_active', true)
         .order('level');
 
       if (!error) {
@@ -82,10 +81,10 @@ const CourseRegistrationPage: React.FC = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
+      // Updated to select the correct columns from your database
       const { data, error } = await supabase
         .from('students')
-        .select('id, name, matric_number, level, department, email, phone, is_active')
-        .eq('is_active', true)
+        .select('id, student_id, name, level, department_name, email, phone, program')
         .order('name');
 
       if (!error) {
@@ -103,55 +102,74 @@ const CourseRegistrationPage: React.FC = () => {
     }
   };
 
-  const findStudentByMatric = async (matric: string) => {
+  const findStudentById = async (id: string) => {
     try {
       setSearching(true);
-      console.log('Searching for matric:', matric);
+      console.log('Searching for student ID:', id);
       
-      // Try different search approaches
-      const cleanMatric = matric.trim().toUpperCase();
+      // Clean the input
+      const cleanId = id.trim().toUpperCase();
+      console.log('Cleaned ID:', cleanId);
       
-      // First try exact match
+      // First try exact match on student_id
+      console.log('Trying exact match on student_id...');
       let { data, error } = await supabase
         .from('students')
         .select('*')
-        .eq('matric_number', cleanMatric)
-        .eq('is_active', true);
+        .eq('student_id', cleanId);
       
-      console.log('Exact match result:', data, error);
+      console.log('Exact match result:', { data, error });
       
-      // If no exact match, try case-insensitive search
+      // If no exact match, try partial match
       if (!data || data.length === 0) {
+        console.log('Trying partial match...');
         const { data: data2, error: error2 } = await supabase
           .from('students')
           .select('*')
-          .ilike('matric_number', `%${cleanMatric}%`)
-          .eq('is_active', true);
+          .ilike('student_id', `%${cleanId}%`);
         
-        console.log('Partial match result:', data2, error2);
+        console.log('Partial match result:', { data2, error2 });
         data = data2;
         error = error2;
       }
       
+      // If still no match, try searching by name
+      if (!data || data.length === 0) {
+        console.log('Trying name search...');
+        const { data: data3, error: error3 } = await supabase
+          .from('students')
+          .select('*')
+          .ilike('name', `%${cleanId}%`);
+        
+        console.log('Name search result:', { data3, error3 });
+        data = data3;
+        error = error3;
+      }
+      
       if (error) {
-        console.error('Database error:', error);
+        console.error('Database error details:', error);
         message.error(`Database error: ${error.message}`);
         return null;
       }
       
       if (!data || data.length === 0) {
-        message.error(`No active student found with matric number: ${cleanMatric}`);
+        console.log('No students found with any matching criteria');
+        message.error(`No student found with ID: "${id}"`);
         return null;
       }
       
       if (data.length > 1) {
         console.warn('Multiple students found:', data);
-        // If multiple matches, use the first one
-        message.warning('Multiple students found, using the first match');
+        const matches = data.map(d => `${d.student_id || d.id} - ${d.name}`).join(', ');
+        message.warning(`Multiple students found. Using: ${data[0].name}`);
       }
       
       const student = data[0];
-      console.log('Found student:', student);
+      console.log('Successfully found student:', student);
+      console.log('Student ID:', student.id);
+      console.log('Student student_id:', student.student_id);
+      console.log('Student name:', student.name);
+      
       return student;
       
     } catch (error: any) {
@@ -166,7 +184,7 @@ const CourseRegistrationPage: React.FC = () => {
   const fetchStudentEnrollments = async (studentId: string) => {
     try {
       setLoading(true);
-      console.log('Fetching enrollments for student:', studentId);
+      console.log('Fetching enrollments for student ID:', studentId);
       
       const { data, error } = await supabase
         .from('enrollments')
@@ -182,7 +200,7 @@ const CourseRegistrationPage: React.FC = () => {
             department_id
           )
         `)
-        .eq('student_id', studentId)
+        .eq('student_id', studentId) // This should match the student_id in enrollments table
         .eq('status', 'active')
         .order('enrollment_date', { ascending: false });
 
@@ -216,19 +234,20 @@ const CourseRegistrationPage: React.FC = () => {
     }
   };
 
-  const handleMatricSearch = async () => {
-    if (!matricNumber.trim()) {
-      message.error('Please enter a matric number');
+  const handleStudentSearch = async () => {
+    if (!studentId.trim()) {
+      message.error('Please enter a student ID');
       return;
     }
 
-    console.log('Starting search for:', matricNumber);
+    console.log('Starting search for:', studentId);
     
-    const student = await findStudentByMatric(matricNumber);
+    const student = await findStudentById(studentId);
     if (student) {
       console.log('Setting selected student:', student);
       setSelectedStudent(student);
-      await fetchStudentEnrollments(student.id);
+      // Use student.student_id for enrollment lookup (matches enrollments table)
+      await fetchStudentEnrollments(student.student_id || student.id);
     } else {
       console.log('Student not found');
       setSelectedStudent(null);
@@ -269,7 +288,7 @@ const CourseRegistrationPage: React.FC = () => {
 
     try {
       const enrollments = selectedCourses.map(courseId => ({
-        student_id: selectedStudent.id,
+        student_id: selectedStudent.student_id || selectedStudent.id, // Use student_id for enrollments
         course_id: courseId,
         enrollment_date: new Date().toISOString().split('T')[0],
         academic_session: '2024/2025',
@@ -292,7 +311,7 @@ const CourseRegistrationPage: React.FC = () => {
       message.success(`Successfully enrolled in ${selectedCourses.length} course(s)`);
       
       // Refresh data
-      await fetchStudentEnrollments(selectedStudent.id);
+      await fetchStudentEnrollments(selectedStudent.student_id || selectedStudent.id);
       
     } catch (error: any) {
       console.error('Enrollment error:', error);
@@ -318,7 +337,7 @@ const CourseRegistrationPage: React.FC = () => {
       }
 
       message.success('Course unenrolled successfully');
-      await fetchStudentEnrollments(selectedStudent?.id || '');
+      await fetchStudentEnrollments(selectedStudent?.student_id || selectedStudent?.id || '');
       
     } catch (error: any) {
       console.error('Unenrollment error:', error);
@@ -388,16 +407,16 @@ const CourseRegistrationPage: React.FC = () => {
           <Col xs={24} md={12}>
             <Space.Compact style={{ width: '100%' }}>
               <Input
-                placeholder="Enter Matric Number (e.g., ABU24007)"
-                value={matricNumber}
-                onChange={(e) => setMatricNumber(e.target.value)}
-                onPressEnter={handleMatricSearch}
+                placeholder="Enter Student ID (e.g., ABU/2024/001 or ABU24007)"
+                value={studentId}
+                onChange={(e) => setStudentId(e.target.value)}
+                onPressEnter={handleStudentSearch}
                 allowClear
                 disabled={searching}
               />
               <Button 
                 type="primary" 
-                onClick={handleMatricSearch}
+                onClick={handleStudentSearch}
                 loading={searching}
                 icon={<Search size={16} />}
               >
@@ -405,7 +424,7 @@ const CourseRegistrationPage: React.FC = () => {
               </Button>
             </Space.Compact>
             <Text type="secondary" style={{ fontSize: '12px', marginTop: 4, display: 'block' }}>
-              Enter student matriculation number (case-insensitive)
+              Enter student ID or name (case-insensitive)
             </Text>
           </Col>
           <Col xs={24} md={12}>
@@ -418,9 +437,10 @@ const CourseRegistrationPage: React.FC = () => {
                 }
                 description={
                   <div>
-                    <div><strong>Matric:</strong> {selectedStudent.matric_number}</div>
+                    <div><strong>Student ID:</strong> {selectedStudent.student_id || selectedStudent.id}</div>
                     <div><strong>Level:</strong> {selectedStudent.level}</div>
-                    <div><strong>Department:</strong> {selectedStudent.department || 'Not specified'}</div>
+                    <div><strong>Program:</strong> {selectedStudent.program || 'Not specified'}</div>
+                    <div><strong>Department:</strong> {selectedStudent.department_name || 'Not specified'}</div>
                   </div>
                 }
                 type="info"
@@ -430,7 +450,15 @@ const CourseRegistrationPage: React.FC = () => {
           </Col>
         </Row>
 
-        {selectedStudent ? (
+        {students.length === 0 && !loading ? (
+          <Alert
+            message="No students found in database"
+            description="Please add students first before attempting course enrollment."
+            type="warning"
+            showIcon
+            style={{ marginBottom: 20 }}
+          />
+        ) : selectedStudent ? (
           <>
             <div style={{ marginBottom: 30 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -547,10 +575,10 @@ const CourseRegistrationPage: React.FC = () => {
         ) : (
           <div style={{ textAlign: 'center', padding: '40px 0' }}>
             <User size={48} style={{ color: '#d9d9d9', marginBottom: 16 }} />
-            <Text type="secondary">Enter a matric number to search for a student</Text>
+            <Text type="secondary">Enter a student ID or name to search for a student</Text>
             <br />
             <Text type="secondary" style={{ fontSize: '12px', display: 'block', marginTop: 8 }}>
-              Example: ABU24007
+              Examples: "ABU/2024/001" or "John Student"
             </Text>
           </div>
         )}
