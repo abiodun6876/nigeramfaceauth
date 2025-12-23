@@ -1,5 +1,6 @@
 // src/types/database.ts
 
+// Add this at the beginning of the file
 export interface Enrollment {
   id: string;
   student_id: string;
@@ -12,6 +13,22 @@ export interface Enrollment {
   updated_at: string;
   student?: Student;
   course?: Course;
+}
+
+
+export interface FaceEnrollment {
+  id: string;
+  student_id: string;
+  embedding: number[];
+  photo_url: string;
+  quality_score: number;
+  capture_device?: string;
+  enrolled_at: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Add this for local storage tracking
+  has_local_image?: boolean;
 }
 
 export interface Student {
@@ -54,8 +71,9 @@ export interface Student {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  // Add enrollment relationship
+  // Add relationships
   enrollments?: Enrollment[];
+  face_enrollments?: FaceEnrollment[];
 }
 
 export interface Lecturer {
@@ -213,15 +231,15 @@ export interface Event {
 
 export interface AttendanceRecord {
   id: string;
-  event_id?: string; // Optional for session-based attendance
-  session_id?: string; // New: For attendance sessions
+  event_id?: string;
+  session_id?: string;
   student_id: string;
-  student_name?: string; // Added for session-based attendance
-  matric_number?: string; // Added for session-based attendance
-  faculty_code?: string; // Added for session-based attendance
-  department_code?: string; // Added for session-based attendance
-  program?: string; // Added for session-based attendance
-  level?: number; // Added for session-based attendance
+  student_name?: string;
+  matric_number?: string;
+  faculty_code?: string;
+  department_code?: string;
+  program?: string;
+  level?: number;
   student?: Student;
   check_in_time: string;
   check_out_time?: string;
@@ -230,13 +248,12 @@ export interface AttendanceRecord {
   verified: boolean;
   device_id: string;
   synced?: boolean;
-  face_match_score?: number; // Added for face verification score
-  photo_url?: string; // Added for captured face photo
+  face_match_score?: number;
+  photo_url?: string;
   created_at: string;
   updated_at: string;
 }
 
-// New interface for Attendance Session
 export interface AttendanceSession {
   id: string;
   course_code: string;
@@ -249,19 +266,6 @@ export interface AttendanceSession {
   total_students: number;
   attended_students: number;
   status: 'active' | 'completed';
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface FaceEnrollment {
-  id: string;
-  student_id: string;
-  embedding: number[];
-  photo_url: string;
-  quality_score: number;
-  capture_device?: string;
-  enrolled_at: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -328,23 +332,6 @@ export interface StudentCourseRegistration {
   updated_at: string;
 }
 
-// New interface for Face Verification Result
-export interface FaceVerificationResult {
-  success: boolean;
-  match: boolean;
-  student?: Student;
-  confidence?: number;
-  matchScore?: number;
-  message: string;
-  timestamp: string;
-  image?: string;
-  sessionInfo?: {
-    totalStudents?: number;
-    courseCode?: string;
-    level?: number;
-  };
-}
-// Add to your types/database.ts if not present:
 export interface FaceVerificationResult {
   success: boolean;
   match: boolean;
@@ -361,7 +348,6 @@ export interface FaceVerificationResult {
   };
 }
 
-// Or create a simpler attendance result interface:
 export interface AttendanceResult {
   success: boolean;
   student?: {
@@ -375,7 +361,6 @@ export interface AttendanceResult {
   offline?: boolean;
 }
 
-// New interface for Enrollment Result
 export interface EnrollmentResult {
   success: boolean;
   studentId?: string;

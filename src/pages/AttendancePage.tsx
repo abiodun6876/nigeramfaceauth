@@ -437,6 +437,9 @@ const AttendancePage: React.FC = () => {
     }
   };
 
+
+  
+
   const handleMarkAllPresent = async () => {
     if (!selectedCourse || students.length === 0) return;
     
@@ -582,28 +585,7 @@ const AttendancePage: React.FC = () => {
     <div style={{ padding: '20px' }}>
       <Title level={2}>Take Attendance</Title>
       
-      {/* Show instructions if table doesn't exist */}
-      {selectedCourse && (
-        <Alert
-          message="Important Instructions"
-          description={
-            <div>
-              <p>Before using attendance features:</p>
-              <ol>
-                <li>Run this SQL in Supabase to disable RLS:
-                  <pre style={{ background: '#f5f5f5', padding: '8px', borderRadius: '4px', marginTop: '4px' }}>
-                    ALTER TABLE student_attendance DISABLE ROW LEVEL SECURITY;
-                  </pre>
-                </li>
-                <li>Ensure FaceCamera component returns <code>matric_number</code> in student object</li>
-              </ol>
-            </div>
-          }
-          type="warning"
-          showIcon
-          style={{ marginBottom: 20 }}
-        />
-      )}
+   
       
       <Card style={{ marginBottom: 20 }}>
         <Row gutter={[16, 16]} align="middle">

@@ -1,5 +1,5 @@
-// src/pages/EnrollmentPage.tsx - UPDATED FOR YOUR DATABASE SCHEMA
-import React, { useState,  useEffect } from 'react';
+// src/pages/EnrollmentPage.tsx - CORRECTED WITH LOCALSTORAGE
+import React, { useState, useEffect } from 'react';
 import { 
   Card, 
   Form, 
@@ -13,7 +13,6 @@ import {
   Row,
   Col,
   Steps,
-  Spin,
   Tag
 } from 'antd';
 import { Camera, User, BookOpen, CheckCircle, Mail, Phone, GraduationCap } from 'lucide-react';
@@ -21,6 +20,53 @@ import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 
 const { Title, Text } = Typography;
+
+// Local storage function - defined outside component
+const saveImageToLocalStorage = (studentId: string, imageId: string, imageData: string) => {
+  try {
+    const key = `face_images_${studentId}_${imageId}`;
+    
+    // Compress image if needed
+    if (imageData.length > 100000) {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        // Resize
+        const maxSize = 300;
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > maxSize) {
+            height = Math.round((height * maxSize) / width);
+            width = maxSize;
+          }
+        } else {
+          if (height > maxSize) {
+            width = Math.round((width * maxSize) / height);
+            height = maxSize;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedData = canvas.toDataURL('image/jpeg', 0.7);
+        localStorage.setItem(key, compressedData);
+        console.log('Image saved to localStorage (compressed)');
+      };
+      img.src = imageData;
+    } else {
+      localStorage.setItem(key, imageData);
+      console.log('Image saved to localStorage');
+    }
+  } catch (error) {
+    console.error('Error saving to localStorage:', error);
+  }
+};
 
 const EnrollmentPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
@@ -37,248 +83,200 @@ const EnrollmentPage: React.FC = () => {
     return `ABU/${currentYear}/${randomNum}`;
   };
 
+  useEffect(() => {
+    console.log('studentData updated:', studentData);
+  }, [studentData]);
 
-  // Inside your component, add:
-useEffect(() => {
-  console.log('studentData updated:', studentData);
-}, [studentData]);
-
- const handleNext = async () => {
-  try {
-    if (currentStep === 0) {
-      console.log('Current form values:', form.getFieldsValue());
-      console.log('Form validation status:', form.isFieldsTouched());
-      
-      // Try to validate all fields
-      try {
+  const handleNext = async () => {
+    try {
+      if (currentStep === 0) {
         await form.validateFields();
-        console.log('Form validation passed');
-      } catch (validationError) {
-        console.log('Form validation errors:', validationError);
-        message.error('Please fix the form errors before proceeding');
-        return;
-      }
-      
-      const values = form.getFieldsValue();
-      
-      // Generate matric number if needed
-      if (!values.matric_number?.trim()) {
-        values.matric_number = generateMatricNumber();
-        form.setFieldValue('matric_number', values.matric_number);
-      }
+        const values = form.getFieldsValue();
+        
+        // Generate matric number if needed
+        if (!values.matric_number?.trim()) {
+          values.matric_number = generateMatricNumber();
+          form.setFieldValue('matric_number', values.matric_number);
+        }
 
-      console.log('Proceeding with values:', values);
-      
-      setStudentData(values);
-      setCurrentStep(1);
-    } else if (currentStep === 1) {
-      setCurrentStep(2);
+        console.log('Proceeding with values:', values);
+        setStudentData(values);
+        setCurrentStep(1);
+      } else if (currentStep === 1) {
+        setCurrentStep(2);
+      }
+    } catch (error: any) {
+      console.error('Error in handleNext:', error);
+      const errorMessages = error.errorFields?.map((f: any) => f.errors.join(', ')).join('; ');
+      message.error(errorMessages || 'Please fix form errors');
     }
-  } catch (error: any) {
-    console.error('Error in handleNext:', error);
-    message.error('Error: ' + (error.message || 'Unknown error'));
-  }
-};
+  };
 
   const handleBack = () => {
     setCurrentStep(currentStep - 1);
   };
 
-  
   const handleEnrollmentComplete = async (result: any) => {
-  console.log('Face capture result:', result);
-  console.log('Current studentData:', studentData); // Check what's in studentData
-  
-  if (result.success) {
-    try {
-      setLoading(true);
-      
-      // ✅ Use studentData from state instead of form.getFieldsValue()
-      const studentName = studentData.name?.trim();
-      const studentId = studentData.matric_number?.trim() || generateMatricNumber();
-      
-      if (!studentName) {
-        throw new Error('Student name is required. Please go back and fill in the student name.');
-      }
-      
-      if (!studentId) {
-        throw new Error('Student ID cannot be empty');
-      }
-
-      console.log('Enrolling student:', { name: studentName, id: studentId });
-
-      // Check if student with this student_id already exists
-      const { data: existingStudent, error: checkError } = await supabase
-        .from('students')
-        .select('*')
-        .eq('student_id', studentId)
-        .maybeSingle();
-
-      if (checkError) {
-        console.log('Check query error:', checkError);
-      }
-
-      if (existingStudent) {
-        message.error('A student with this ID already exists!');
-        setLoading(false);
-        return;
-      }
-
-      // Prepare student data according to your database schema
-      const studentRecord: Record<string, any> = {
-        student_id: studentId,
-        name: studentName, // ✅ Use studentData.name
-        matric_number: studentId,
-        email: studentData.email?.trim() || null,
-        phone: studentData.phone?.trim() || null,
-        gender: studentData.gender || null,
-        enrollment_status: 'enrolled',
-        face_match_threshold: 0.7,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-
-      // Add academic fields from studentData
-      if (studentData.level) studentRecord.level = studentData.level;
-      if (studentData.semester) studentRecord.semester = studentData.semester;
-      if (studentData.academic_session) studentRecord.academic_session = studentData.academic_session;
-      if (studentData.program) studentRecord.program = studentData.program;
-
-      // Add face enrollment data if available
-      if (result.success) {
-        studentRecord.face_embedding = result.embedding || [];
-        studentRecord.photo_url = result.photoUrl || null;
-        studentRecord.face_enrolled_at = new Date().toISOString();
-      }
-
-      console.log('Saving student data:', studentRecord);
-
-      // Save to database
-      const { data: student, error: studentError } = await supabase
-        .from('students')
-        .insert([studentRecord])
-        .select()
-        .single();
-
-      if (studentError) {
-        console.error('Database error:', studentError);
+    console.log('Face capture result:', {
+      success: result.success,
+      hasEmbedding: !!result.embedding,
+      embeddingLength: result.embedding?.length,
+      hasPhoto: !!result.photoUrl,
+      message: result.message
+    });
+    
+    if (result.success) {
+      try {
+        setLoading(true);
         
-        // Try without the embedding if it fails
-        if (studentError.message.includes('embedding')) {
-          const simpleRecord = { ...studentRecord };
-          delete simpleRecord.face_embedding;
-          
-          const { data: student2, error: studentError2 } = await supabase
-            .from('students')
-            .insert([simpleRecord])
-            .select()
-            .single();
-            
-          if (studentError2) {
-            throw new Error(`Failed to save student: ${studentError2.message}`);
-          }
-          
-          // Save face data to separate table
-          if (student2 && result.embedding) {
-            await saveFaceData(student2.id, result);
-          }
-          
-          setEnrollmentResult({ success: true, student: student2 });
-          setEnrollmentComplete(true);
-          message.success('Student enrolled successfully!');
+        // Use studentData from state
+        const studentName = studentData.name?.trim();
+        const studentId = studentData.matric_number?.trim() || generateMatricNumber();
+        
+        if (!studentName) {
+          throw new Error('Student name is required');
+        }
+
+        // Check if student already exists
+        const { data: existingStudent } = await supabase
+          .from('students')
+          .select('id')
+          .eq('student_id', studentId)
+          .maybeSingle();
+
+        if (existingStudent) {
+          message.error('A student with this ID already exists!');
+          setLoading(false);
           return;
         }
+
+        // Prepare student data
+        const studentRecord: any = {
+          student_id: studentId,
+          name: studentName,
+          matric_number: studentId,
+          email: studentData.email?.trim() || null,
+          phone: studentData.phone?.trim() || null,
+          gender: studentData.gender || 'male',
+          enrollment_status: 'enrolled',
+          face_match_threshold: 0.7,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        // Add academic fields
+        if (studentData.level) studentRecord.level = studentData.level;
+        if (studentData.semester) studentRecord.semester = studentData.semester;
+        if (studentData.academic_session) studentRecord.academic_session = studentData.academic_session;
+        if (studentData.program) studentRecord.program = studentData.program;
+
+        // Handle face data - KEY FIX HERE
+        if (result.embedding && result.embedding.length > 0) {
+          console.log('Saving face embedding with length:', result.embedding.length);
+          
+          // Store embedding as JSON string (PostgreSQL friendly)
+          studentRecord.face_embedding = JSON.stringify(result.embedding);
+          studentRecord.face_enrolled_at = new Date().toISOString();
+          
+          if (result.photoUrl) {
+            // Compress photo URL if too long
+            studentRecord.photo_url = result.photoUrl.length > 100000 
+              ? result.photoUrl.substring(0, 100000) 
+              : result.photoUrl;
+          }
+        } else if (result.photoUrl) {
+          // If no embedding but has photo
+          console.log('No embedding, saving photo only');
+          studentRecord.photo_url = result.photoUrl;
+          studentRecord.face_enrolled_at = new Date().toISOString();
+        }
+
+        console.log('Saving student record with face data:', {
+          name: studentRecord.name,
+          hasEmbedding: !!studentRecord.face_embedding,
+          embeddingLength: studentRecord.face_embedding?.length || 0,
+          hasPhoto: !!studentRecord.photo_url
+        });
+
+        // Save to database
+        const { data: student, error: studentError } = await supabase
+          .from('students')
+          .insert([studentRecord])
+          .select()
+          .single();
+
+        if (studentError) {
+          console.error('Database error:', studentError);
+          
+          // Try without embedding if that's the issue
+          if (studentError.message.includes('embedding')) {
+            console.log('Trying without embedding...');
+            const simpleRecord = { ...studentRecord };
+            delete simpleRecord.face_embedding;
+            
+            const { data: student2, error: studentError2 } = await supabase
+              .from('students')
+              .insert([simpleRecord])
+              .select()
+              .single();
+              
+            if (studentError2) {
+              throw new Error(`Failed to save student: ${studentError2.message}`);
+            }
+            
+            // Save image to localStorage after database save
+            if (result.photoUrl && student2) {
+              saveImageToLocalStorage(student2.id, student2.id, result.photoUrl);
+            }
+            
+            setEnrollmentResult({ 
+              success: true, 
+              student: student2,
+              localStorageSaved: !!result.photoUrl
+            });
+          } else {
+            throw new Error(`Database error: ${studentError.message}`);
+          }
+        } else {
+          // Save image to localStorage after database save
+          if (result.photoUrl && student) {
+            saveImageToLocalStorage(student.id, student.id, result.photoUrl);
+          }
+          
+          setEnrollmentResult({ 
+            success: true, 
+            student,
+            faceCaptured: !!result.embedding,
+            photoCaptured: !!result.photoUrl,
+            localStorageSaved: !!result.photoUrl
+          });
+        }
+
+        setEnrollmentComplete(true);
+        message.success('Student enrolled successfully!');
+
+      } catch (error: any) {
+        console.error('Enrollment error:', error);
+        message.error(`Error: ${error.message}`);
         
-        throw new Error(`Database error: ${studentError.message}`);
+        setEnrollmentResult({
+          success: false,
+          message: error.message
+        });
+      } finally {
+        setLoading(false);
       }
-
-      console.log('Student saved successfully:', student);
-
-      // Save face data to separate table if needed
-      if (student && result.embedding) {
-        await saveFaceData(student.id, result);
-      }
-
-      setEnrollmentResult({ 
-        success: true, 
-        student,
-        faceCaptured: true 
-      });
-      setEnrollmentComplete(true);
-      message.success('Student enrolled successfully!');
-
-    } catch (error: any) {
-      console.error('Enrollment error:', error);
-      message.error(`Failed to save student: ${error.message || 'Unknown error'}`);
-      
-      setEnrollmentResult({
-        success: false,
-        message: error.message || 'Failed to save student data'
-      });
-    } finally {
-      setLoading(false);
+    } else {
+      message.error(`Face capture failed: ${result.message}`);
+      setEnrollmentResult(result);
     }
-  } else {
-    message.error(`Face capture failed: ${result.message}`);
-    setEnrollmentResult(result);
-  }
-};
+  };
 
-  const saveFaceData = async (studentId: string, result: any) => {
-  try {
-    // First check if face_enrollments table exists
-    const { data: tableExists } = await supabase
-      .from('information_schema.tables')
-      .select('table_name')
-      .eq('table_name', 'face_enrollments')
-      .single();
-
-    if (!tableExists) {
-      console.log('face_enrollments table does not exist, skipping...');
-      return;
-    }
-
-    const faceData: Record<string, any> = {
-      student_id: studentId,
-      enrolled_at: new Date().toISOString(),
-      // REMOVE: is_active: true, // Remove if column doesn't exist
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // Add optional fields if they exist
-    if (result.embedding && result.embedding.length > 0) {
-      faceData.embedding = result.embedding;
-    }
-    if (result.photoUrl) {
-      faceData.photo_url = result.photoUrl;
-    }
-    if (result.quality) {
-      faceData.quality_score = result.quality;
-    }
-
-    console.log('Saving face data:', faceData);
-
-    const { error: faceError } = await supabase
-      .from('face_enrollments')
-      .insert([faceData]);
-
-    if (faceError) {
-      console.error('Face enrollment save error:', faceError);
-      // Don't throw - this is optional
-    }
-  } catch (error) {
-    console.error('Error saving face data:', error);
-  }
-};
-  // Add academic fields form
   const [academicForm] = Form.useForm();
 
   const handleAcademicSubmit = async () => {
     try {
       const values = await academicForm.validateFields();
-      console.log('Academic values:', values);
-      // Store academic data in studentData
       setStudentData((prev: any) => ({ ...prev, ...values }));
       message.success('Academic information saved');
       handleNext();
@@ -305,38 +303,31 @@ useEffect(() => {
             form={form}
             layout="vertical"
             style={{ maxWidth: 600, margin: '0 auto' }}
-            initialValues={{
-              gender: 'male'
-            }}
+            initialValues={{ gender: 'male' }}
           >
             <Row gutter={[16, 16]}>
               <Col span={24}>
-               
-<Form.Item
-  label="Full Name *"
-  name="name"
-  rules={[
-    { 
-      required: true, 
-      message: 'Please enter student name',
-      whitespace: true // ✅ This ensures empty strings are invalid
-    },
-    { 
-      min: 3, 
-      message: 'Name must be at least 3 characters' 
-    }
-  ]}
-  validateTrigger={['onChange', 'onBlur']} // ✅ Validate on multiple events
->
-  <Input 
-    placeholder="Enter student full name" 
-    size="large"
-    onChange={(e) => {
-      // Update the form value immediately
-      form.setFieldValue('name', e.target.value);
-    }}
-  />
-</Form.Item>
+                <Form.Item
+                  label="Full Name *"
+                  name="name"
+                  rules={[
+                    { 
+                      required: true, 
+                      message: 'Please enter student name',
+                      whitespace: true
+                    },
+                    { 
+                      min: 3, 
+                      message: 'Name must be at least 3 characters' 
+                    }
+                  ]}
+                  validateTrigger={['onChange', 'onBlur']}
+                >
+                  <Input 
+                    placeholder="Enter student full name" 
+                    size="large"
+                  />
+                </Form.Item>
               </Col>
             </Row>
 
@@ -369,9 +360,7 @@ useEffect(() => {
                 <Form.Item
                   label="Email"
                   name="email"
-                  rules={[
-                    { type: 'email', message: 'Please enter valid email' }
-                  ]}
+                  rules={[{ type: 'email', message: 'Please enter valid email' }]}
                 >
                   <Input 
                     placeholder="student@abuad.edu.ng" 
@@ -381,10 +370,7 @@ useEffect(() => {
                 </Form.Item>
               </Col>
               <Col span={24} md={12}>
-                <Form.Item
-                  label="Phone Number"
-                  name="phone"
-                >
+                <Form.Item label="Phone Number" name="phone">
                   <Input 
                     placeholder="+2348000000000" 
                     prefix={<Phone size={16} />}
@@ -425,17 +411,11 @@ useEffect(() => {
           <Form
             form={academicForm}
             layout="vertical"
-            initialValues={{
-              level: 100,
-              semester: 1
-            }}
+            initialValues={{ level: 100, semester: 1 }}
           >
             <Row gutter={[16, 16]}>
               <Col span={12}>
-                <Form.Item
-                  label="Level"
-                  name="level"
-                >
+                <Form.Item label="Level" name="level">
                   <Select placeholder="Select level" size="large">
                     <Select.Option value={100}>100 Level</Select.Option>
                     <Select.Option value={200}>200 Level</Select.Option>
@@ -446,10 +426,7 @@ useEffect(() => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item
-                  label="Semester"
-                  name="semester"
-                >
+                <Form.Item label="Semester" name="semester">
                   <Select placeholder="Select semester" size="large">
                     <Select.Option value={1}>First Semester</Select.Option>
                     <Select.Option value={2}>Second Semester</Select.Option>
@@ -460,28 +437,16 @@ useEffect(() => {
 
             <Row gutter={[16, 16]}>
               <Col span={24}>
-                <Form.Item
-                  label="Academic Session"
-                  name="academic_session"
-                >
-                  <Input 
-                    placeholder="e.g., 2024/2025" 
-                    size="large"
-                  />
+                <Form.Item label="Academic Session" name="academic_session">
+                  <Input placeholder="e.g., 2024/2025" size="large" />
                 </Form.Item>
               </Col>
             </Row>
 
             <Row gutter={[16, 16]}>
               <Col span={24}>
-                <Form.Item
-                  label="Program"
-                  name="program"
-                >
-                  <Input 
-                    placeholder="e.g., Computer Science" 
-                    size="large"
-                  />
+                <Form.Item label="Program" name="program">
+                  <Input placeholder="e.g., Computer Science" size="large" />
                 </Form.Item>
               </Col>
             </Row>
@@ -502,17 +467,11 @@ useEffect(() => {
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           {enrollmentResult?.success ? (
             <>
-            
-<div style={{ marginBottom: 20, padding: 10, backgroundColor: '#f6ffed', border: '1px solid #b7eb8f' }}>
-  <Text strong>Debug Info:</Text>
-  <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-    studentData: {JSON.stringify(studentData)}
-  </div>
-</div>
               <CheckCircle size={64} color="#52c41a" />
               <Title level={3} style={{ marginTop: 20 }}>
                 Enrollment Complete!
               </Title>
+              
               <Card style={{ maxWidth: 500, margin: '20px auto', textAlign: 'left' }}>
                 <Title level={4}>Student Summary</Title>
                 <p><strong>Name:</strong> {enrollmentResult.student?.name}</p>
@@ -530,7 +489,16 @@ useEffect(() => {
                   <p><strong>Email:</strong> {enrollmentResult.student.email}</p>
                 )}
                 <p><strong>Status:</strong> <Tag color="success">Enrolled</Tag></p>
-                <p><strong>Face Enrolled:</strong> {enrollmentResult?.faceCaptured ? 'Yes' : 'No'}</p>
+                <p><strong>Face Data:</strong> 
+                  <Tag color={enrollmentResult?.faceCaptured ? "green" : "orange"} style={{ marginLeft: 8 }}>
+                    {enrollmentResult?.faceCaptured ? 'Embedding + Photo' : 'Photo Only'}
+                  </Tag>
+                </p>
+                <p><strong>Local Storage:</strong> 
+                  <Tag color={enrollmentResult?.localStorageSaved ? "green" : "gray"} style={{ marginLeft: 8 }}>
+                    {enrollmentResult?.localStorageSaved ? 'Saved Locally' : 'Not Saved'}
+                  </Tag>
+                </p>
                 <p><strong>Enrollment Date:</strong> {new Date().toLocaleDateString()}</p>
               </Card>
             </>
@@ -646,24 +614,30 @@ useEffect(() => {
                 >
                   Start Face Enrollment
                 </Button>
+                
                 <div style={{ marginTop: 20 }}>
-                  <Text type="secondary" style={{ display: 'block', marginBottom: 10 }}>
-                    Don't have a camera or having issues?
-                  </Text>
+                  <Alert
+                    type="info"
+                    message="Testing Note"
+                    description="If face recognition models are not loading, you can still save the student with just a photo. Images will be saved to both database and local storage."
+                    style={{ marginBottom: 20 }}
+                  />
+                  
                   <Button 
                     type="default"
                     onClick={() => {
-                      // Simulate face enrollment for testing
+                      // Test enrollment with simulated data
                       handleEnrollmentComplete({
                         success: true,
-                        message: 'Face enrollment simulated for testing',
-                        embedding: [],
-                        photoUrl: null
+                        message: 'Test enrollment successful',
+                        embedding: new Array(128).fill(0.1), // Simulated embedding
+                        photoUrl: 'data:image/jpeg;base64,test-photo-base64'
                       });
                     }}
                   >
-                    Simulate Enrollment (Testing)
+                    Test Enrollment
                   </Button>
+                  
                   <div style={{ marginTop: 20 }}>
                     <Button onClick={handleBack}>
                       Back to Previous Step
@@ -696,6 +670,7 @@ useEffect(() => {
           }))}
         />
 
+        
         <div style={{ minHeight: 400 }}>
           {stepItems[currentStep].content}
         </div>
