@@ -1,4 +1,4 @@
-// src/pages/EnrollmentPage.tsx - CORRECTED WITH LOCALSTORAGE
+// src/pages/EnrollmentPage.tsx - WITH AUTO-GENERATED MATRIC NUMBER
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -13,7 +13,8 @@ import {
   Row,
   Col,
   Steps,
-  Tag
+  Tag,
+  Input as AntdInput
 } from 'antd';
 import { Camera, User, BookOpen, CheckCircle, Mail, Phone, GraduationCap } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
@@ -76,12 +77,20 @@ const EnrollmentPage: React.FC = () => {
   const [enrollmentComplete, setEnrollmentComplete] = useState(false);
   const [enrollmentResult, setEnrollmentResult] = useState<any>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [matricNumber, setMatricNumber] = useState<string>('');
 
   const generateMatricNumber = () => {
     const currentYear = new Date().getFullYear();
-    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return `ABU/${currentYear}/${randomNum}`;
   };
+
+  // Generate matric number when component mounts
+  useEffect(() => {
+    const newMatric = generateMatricNumber();
+    setMatricNumber(newMatric);
+    form.setFieldValue('matric_number', newMatric);
+  }, [form]);
 
   useEffect(() => {
     console.log('studentData updated:', studentData);
@@ -93,10 +102,12 @@ const EnrollmentPage: React.FC = () => {
         await form.validateFields();
         const values = form.getFieldsValue();
         
-        // Generate matric number if needed
+        // Ensure matric number is set
         if (!values.matric_number?.trim()) {
-          values.matric_number = generateMatricNumber();
-          form.setFieldValue('matric_number', values.matric_number);
+          const newMatric = generateMatricNumber();
+          values.matric_number = newMatric;
+          setMatricNumber(newMatric);
+          form.setFieldValue('matric_number', newMatric);
         }
 
         console.log('Proceeding with values:', values);
@@ -116,6 +127,13 @@ const EnrollmentPage: React.FC = () => {
     setCurrentStep(currentStep - 1);
   };
 
+  const handleRegenerateMatric = () => {
+    const newMatric = generateMatricNumber();
+    setMatricNumber(newMatric);
+    form.setFieldValue('matric_number', newMatric);
+    message.success('New matric number generated');
+  };
+
   const handleEnrollmentComplete = async (result: any) => {
     console.log('Face capture result:', {
       success: result.success,
@@ -131,7 +149,7 @@ const EnrollmentPage: React.FC = () => {
         
         // Use studentData from state
         const studentName = studentData.name?.trim();
-        const studentId = studentData.matric_number?.trim() || generateMatricNumber();
+        const studentId = matricNumber; // Use the generated matric number
         
         if (!studentName) {
           throw new Error('Student name is required');
@@ -145,7 +163,11 @@ const EnrollmentPage: React.FC = () => {
           .maybeSingle();
 
         if (existingStudent) {
-          message.error('A student with this ID already exists!');
+          // If matric number exists, generate a new one
+          const newMatric = generateMatricNumber();
+          setMatricNumber(newMatric);
+          form.setFieldValue('matric_number', newMatric);
+          message.warning('Matric number already exists, generating new one...');
           setLoading(false);
           return;
         }
@@ -170,7 +192,7 @@ const EnrollmentPage: React.FC = () => {
         if (studentData.academic_session) studentRecord.academic_session = studentData.academic_session;
         if (studentData.program) studentRecord.program = studentData.program;
 
-        // Handle face data - KEY FIX HERE
+        // Handle face data
         if (result.embedding && result.embedding.length > 0) {
           console.log('Saving face embedding with length:', result.embedding.length);
           
@@ -293,7 +315,7 @@ const EnrollmentPage: React.FC = () => {
         <div>
           <Alert
             message="Student Information"
-            description="Fill in the student's basic details. Matric number will be used as Student ID."
+            description="Fill in the student's basic details. Matric number will be auto-generated."
             type="info"
             showIcon
             style={{ marginBottom: 20 }}
@@ -337,20 +359,32 @@ const EnrollmentPage: React.FC = () => {
                   label="Matriculation Number *"
                   name="matric_number"
                   tooltip="This will also be used as Student ID"
-                  rules={[
-                    { required: true, message: 'Please enter matric number' },
-                    { 
-                      pattern: /^[A-Za-z0-9\/\-]+$/, 
-                      message: 'Only letters, numbers, slashes and hyphens allowed' 
-                    }
-                  ]}
                 >
-                  <Input 
-                    placeholder="e.g., ABU/2024/001" 
-                    prefix={<GraduationCap size={16} />}
-                    size="large"
-                    style={{ textTransform: 'uppercase' }}
-                  />
+                  <Input.Group compact>
+                    <AntdInput
+                      value={matricNumber}
+                      readOnly
+                      size="large"
+                      style={{ 
+                        width: 'calc(100% - 120px)',
+                        textTransform: 'uppercase',
+                        backgroundColor: '#fafafa',
+                        cursor: 'not-allowed'
+                      }}
+                      prefix={<GraduationCap size={16} />}
+                    />
+                    <Button
+                      type="default"
+                      size="large"
+                      onClick={handleRegenerateMatric}
+                      style={{ width: '120px' }}
+                    >
+                      Regenerate
+                    </Button>
+                  </Input.Group>
+                  <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                    Matric number is auto-generated. Click "Regenerate" for a new number.
+                  </Text>
                 </Form.Item>
               </Col>
             </Row>
@@ -528,6 +562,11 @@ const EnrollmentPage: React.FC = () => {
               type="primary"
               size="large"
               onClick={() => {
+                // Generate new matric number for next student
+                const newMatric = generateMatricNumber();
+                setMatricNumber(newMatric);
+                form.setFieldValue('matric_number', newMatric);
+                
                 setCurrentStep(0);
                 setEnrollmentComplete(false);
                 setEnrollmentResult(null);
@@ -535,6 +574,12 @@ const EnrollmentPage: React.FC = () => {
                 academicForm.resetFields();
                 setStudentData({});
                 setIsCameraActive(false);
+                
+                // Reset to initial values
+                form.setFieldsValue({
+                  gender: 'male',
+                  matric_number: newMatric
+                });
               }}
             >
               {enrollmentResult?.success ? 'Enroll Another Student' : 'Try Again'}
@@ -579,7 +624,7 @@ const EnrollmentPage: React.FC = () => {
                 <Col span={8}>
                   <Text strong>Student ID: </Text>
                   <br />
-                  <Tag color="blue">{studentData.matric_number}</Tag>
+                  <Tag color="blue">{matricNumber}</Tag>
                 </Col>
                 <Col span={8}>
                   <Text strong>Status: </Text>
@@ -670,7 +715,6 @@ const EnrollmentPage: React.FC = () => {
           }))}
         />
 
-        
         <div style={{ minHeight: 400 }}>
           {stepItems[currentStep].content}
         </div>
