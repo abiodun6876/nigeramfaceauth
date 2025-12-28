@@ -5,8 +5,9 @@ import { supabase } from '../lib/supabase';
 class FaceRecognition {
   private static instance: FaceRecognition;
   private modelsLoaded = false;
+  private useTinyModel = true; // Use tiny model for mobile
   
-  // Add this for local storage
+  // For local storage of embeddings
   private readonly EMBEDDINGS_KEY = 'face_embeddings';
   
   private constructor() {}
@@ -22,26 +23,84 @@ class FaceRecognition {
     if (this.modelsLoaded) return;
     
     try {
-      console.log('Loading face recognition models...');
+      console.log('Loading face recognition models for mobile...');
       
-      // Load face-api.js models
-      await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
+      // FOR MOBILE: Use tiny models for better performance
+      if (this.useTinyModel) {
+        console.log('Using tiny face detector for mobile...');
+        await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+      } else {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
+      }
+      
       await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
       await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
       
-      // Initialize TensorFlow.js backend
-      await tf.ready();
+      // Configure TensorFlow.js for mobile
+      await this.configureTensorFlowForMobile();
       
       this.modelsLoaded = true;
-      console.log('Face recognition models loaded successfully');
+      console.log('Face recognition models loaded successfully on mobile');
       
     } catch (error) {
-      console.error('Failed to load face recognition models:', error);
+      console.error('Failed to load models on mobile:', error);
+      // Try alternative loading strategy
+      await this.loadModelsAlternative();
+    }
+  }
+  
+  private async configureTensorFlowForMobile() {
+    // Optimize TensorFlow for mobile
+    await tf.ready();
+    
+    // Set backend - try WebGL first, fall back to CPU
+    const backends = ['webgl', 'cpu'];
+    
+    for (const backend of backends) {
+      try {
+        await tf.setBackend(backend);
+        console.log(`TensorFlow backend set to: ${backend}`);
+        break;
+      } catch (err) {
+        console.warn(`Failed to set backend ${backend}:`, err);
+        continue;
+      }
+    }
+    
+    // Optimize for mobile
+    tf.ENV.set('WEBGL_PACK', true);
+    tf.ENV.set('WEBGL_DELETE_TEXTURE_THRESHOLD', 0);
+    
+    console.log('TensorFlow ready. Backend:', tf.getBackend());
+  }
+  
+  private async loadModelsAlternative() {
+    console.log('Trying alternative model loading...');
+    
+    try {
+      // Try loading from CDN as alternative
+      const modelPath = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
+      
+      if (this.useTinyModel) {
+        await faceapi.nets.tinyFaceDetector.loadFromUri(modelPath);
+      } else {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(modelPath);
+      }
+      
+      await faceapi.nets.faceLandmark68Net.loadFromUri(modelPath);
+      await faceapi.nets.faceRecognitionNet.loadFromUri(modelPath);
+      
+      this.modelsLoaded = true;
+      console.log('Models loaded from CDN successfully');
+      
+    } catch (error) {
+      console.error('Alternative loading also failed:', error);
       throw error;
     }
   }
   
-  // Extract face descriptor from image
+  // ========== FACE EXTRACTION METHODS ==========
+  
   async extractFaceDescriptor(imageData: string): Promise<Float32Array | null> {
     try {
       if (!this.modelsLoaded) {
@@ -51,24 +110,62 @@ class FaceRecognition {
       // Convert base64 to HTMLImageElement
       const img = await this.base64ToImage(imageData);
       
-      // Detect face and extract descriptor
-      const detection = await faceapi
-        .detectSingleFace(img)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
+      // MOBILE OPTIMIZATION: Use smaller input size
+      const maxSize = 320; // Smaller for mobile
+      const scale = Math.min(maxSize / img.width, maxSize / img.height);
+      const resizedWidth = img.width * scale;
+      const resizedHeight = img.height * scale;
+      
+      // Detect face with mobile-optimized settings
+      let detection;
+      
+      if (this.useTinyModel) {
+        detection = await faceapi
+          .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions({
+            inputSize: 160, // Smaller for mobile
+            scoreThreshold: 0.5
+          }))
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+      } else {
+        detection = await faceapi
+          .detectSingleFace(img)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+      }
       
       if (!detection) {
         console.log('No face detected in image');
         return null;
       }
       
+      console.log('Face detected successfully on mobile');
       return detection.descriptor;
       
     } catch (error) {
-      console.error('Error extracting face descriptor:', error);
+      console.error('Error extracting face descriptor on mobile:', error);
+      
+      // Check for specific mobile errors
+      if (error.message.includes('WebGL')) {
+        console.error('WebGL error - common on mobile. Check browser settings.');
+      }
+      
       return null;
     }
   }
+  
+  // Helper: Convert base64 to Image
+  private base64ToImage(base64: string): Promise<HTMLImageElement> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = base64;
+      img.crossOrigin = 'anonymous'; // Important for CORS
+    });
+  }
+  
+  // ========== FACE COMPARISON METHODS ==========
   
   // Compare two face descriptors
   compareFaces(descriptor1: Float32Array, descriptor2: Float32Array): number {
@@ -107,73 +204,64 @@ class FaceRecognition {
     return bestMatch;
   }
   
-  // Helper: Convert base64 to Image
-  private base64ToImage(base64: string): Promise<HTMLImageElement> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = base64;
-    });
-  }
+  // ========== ATTENDANCE MATCHING METHODS ==========
   
-  // Optimized face matching for attendance
   async matchFaceForAttendance(
     capturedImage: string,
     maxMatches: number = 5
-  ): Promise<Array<{studentId: string, name: string, confidence: number}>> {
+  ): Promise<Array<{studentId: string, name: string, matric_number: string, confidence: number}>> {
     try {
       // 1. Extract face from captured image
       const capturedDescriptor = await this.extractFaceDescriptor(capturedImage);
       
       if (!capturedDescriptor) {
-        throw new Error('No face detected in captured image');
-      }
-      
-      // 2. Get all enrolled students with face data
-      const { data: students } = await supabase
-        .from('students')
-        .select('student_id, name, photo_data, face_embedding')
-        .eq('enrollment_status', 'enrolled')
-        .not('photo_data', 'is', null)
-        .limit(100);
-      
-      if (!students || students.length === 0) {
+        console.log('No face detected in captured image');
         return [];
       }
       
-      // 3. Extract or load descriptors for each student
-      const matches = [];
+      // 2. Get all enrolled students WITH face embeddings
+      const { data: students, error } = await supabase
+        .from('students')
+        .select('student_id, name, matric_number, face_embedding')
+        .eq('enrollment_status', 'enrolled')
+        .not('face_embedding', 'is', null)
+        .limit(50);
       
+      if (error) {
+        console.error('Database error:', error);
+        return [];
+      }
+      
+      if (!students || students.length === 0) {
+        console.log('No students with face embeddings found');
+        return [];
+      }
+      
+      const matches = [];
+      const MATCH_THRESHOLD = 0.65;
+      
+      // 3. Compare with each student's embedding
       for (const student of students) {
         try {
-          let storedDescriptor: Float32Array;
-          
-          if (student.face_embedding) {
-            // Use pre-computed embedding if available
-            storedDescriptor = new Float32Array(Object.values(student.face_embedding));
-          } else if (student.photo_data) {
-            // Extract descriptor from photo
-            storedDescriptor = await this.extractFaceDescriptor(
-              `data:image/jpeg;base64,${student.photo_data}`
-            );
-            
-            if (storedDescriptor) {
-              // Store the descriptor for future use
-              await this.updateFaceEmbedding(student.student_id, storedDescriptor);
-            }
+          if (!student.face_embedding || student.face_embedding.length === 0) {
+            continue;
           }
           
-          if (storedDescriptor) {
-            const similarity = this.compareFaces(capturedDescriptor, storedDescriptor);
-            
-            if (similarity > 0.6) {
-              matches.push({
-                studentId: student.student_id,
-                name: student.name,
-                confidence: similarity
-              });
-            }
+          // Convert stored array back to Float32Array
+          const storedDescriptor = new Float32Array(student.face_embedding);
+          
+          // Compare faces
+          const similarity = this.compareFaces(capturedDescriptor, storedDescriptor);
+          
+          console.log(`Comparing with ${student.name}: ${similarity.toFixed(3)}`);
+          
+          if (similarity > MATCH_THRESHOLD) {
+            matches.push({
+              studentId: student.student_id,
+              name: student.name,
+              matric_number: student.matric_number,
+              confidence: similarity
+            });
           }
         } catch (error) {
           console.error(`Error processing student ${student.student_id}:`, error);
@@ -182,15 +270,20 @@ class FaceRecognition {
       }
       
       // 4. Sort by confidence and return top matches
-      return matches
+      const sortedMatches = matches
         .sort((a, b) => b.confidence - a.confidence)
         .slice(0, maxMatches);
+      
+      console.log('Found matches:', sortedMatches.length);
+      return sortedMatches;
       
     } catch (error) {
       console.error('Error in face matching:', error);
       return [];
     }
   }
+  
+  // ========== DATABASE METHODS ==========
   
   // Update face embedding in database
   async updateFaceEmbedding(studentId: string, descriptor: Float32Array) {
@@ -202,16 +295,34 @@ class FaceRecognition {
         .from('students')
         .update({
           face_embedding: embeddingArray,
-          face_enrolled_at: new Date().toISOString()
+          last_face_update: new Date().toISOString()
         })
         .eq('student_id', studentId);
         
+      console.log(`Face embedding updated for student ${studentId}`);
     } catch (error) {
       console.error('Error updating face embedding:', error);
     }
   }
   
-  // === ADD THESE METHODS FOR SYNC SERVICE ===
+  // Extract and save embedding for existing student
+  async processExistingStudentPhoto(studentId: string, photoBase64: string) {
+    try {
+      const descriptor = await this.extractFaceDescriptor(photoBase64);
+      
+      if (descriptor) {
+        await this.updateFaceEmbedding(studentId, descriptor);
+        await this.saveEmbeddingToLocal(studentId, descriptor);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Error processing existing student photo:', error);
+      return false;
+    }
+  }
+  
+  // ========== LOCAL STORAGE METHODS ==========
   
   // Save an embedding to localStorage
   saveEmbeddingToLocal(studentId: string, descriptor: Float32Array): void {
@@ -276,6 +387,52 @@ class FaceRecognition {
     }
     
     return syncedEmbeddings;
+  }
+  
+  // ========== UTILITY METHODS ==========
+  
+  // Helper: Float32Array to base64 for storage
+  float32ArrayToBase64(array: Float32Array): string {
+    const bytes = new Uint8Array(array.buffer);
+    let binary = '';
+    
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    
+    return btoa(binary);
+  }
+  
+  // Helper: base64 to Float32Array for storage
+  base64ToFloat32Array(base64: string): Float32Array {
+    // Remove data URL prefix if present
+    const cleanBase64 = base64.replace(/^data:image\/\w+;base64,/, '');
+    const binary = atob(cleanBase64);
+    const bytes = new Uint8Array(binary.length);
+    
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    
+    return new Float32Array(bytes.buffer);
+  }
+  
+  // ========== DEBUG & STATUS METHODS ==========
+  
+  getStatus() {
+    return {
+      modelsLoaded: this.modelsLoaded,
+      useTinyModel: this.useTinyModel,
+      hasWebGL: tf.getBackend() === 'webgl',
+      backend: tf.getBackend(),
+      localEmbeddingsCount: this.getEmbeddingsFromLocal().length
+    };
+  }
+  
+  // Force reload models (useful for debugging)
+  async reloadModels() {
+    this.modelsLoaded = false;
+    return this.loadModels();
   }
 }
 
