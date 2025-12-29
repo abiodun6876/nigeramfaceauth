@@ -1,0 +1,384 @@
+/* src/pages/AttendancePage.css */
+.attendance-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  background: #f8fafc;
+  min-height: 100vh;
+}
+
+.attendance-header {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f0f0f0;
+}
+
+.header-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.logo-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.header-subtitle {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.status-tag {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.date-display {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 992px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dashboard-card {
+  border-radius: 12px;
+  border: 1px solid #f0f0f0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.control-card {
+  background: white;
+}
+
+.result-card {
+  background: white;
+}
+
+.card-header {
+  margin-bottom: 24px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.course-selection-section {
+  margin-bottom: 32px;
+}
+
+.course-select {
+  width: 100%;
+}
+
+.course-select .ant-select-selector {
+  border-radius: 8px !important;
+  border: 2px solid #f0f0f0 !important;
+  transition: all 0.3s;
+}
+
+.course-select .ant-select-selector:hover {
+  border-color: #1890ff !important;
+}
+
+.course-info-panel {
+  background: #f6f9ff;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+  border: 1px solid #e6f7ff;
+}
+
+.course-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.level-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.camera-control-section {
+  margin-top: 32px;
+}
+
+.scan-ready-card {
+  background: linear-gradient(135deg, #f6f9ff 0%, #e6f7ff 100%);
+  padding: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  margin-bottom: 24px;
+  border: 1px solid #d9ecff;
+}
+
+.scan-icon {
+  width: 56px;
+  height: 56px;
+  background: white;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+.scan-text {
+  flex: 1;
+}
+
+.scan-button {
+  height: 56px;
+  font-size: 16px;
+  font-weight: 500;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1890ff 0%, #36c9c9 100%);
+  border: none;
+  transition: all 0.3s;
+}
+
+.scan-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
+}
+
+.camera-active-section {
+  animation: fadeIn 0.3s ease-in;
+}
+
+.camera-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.close-camera-btn {
+  color: #8c8c8c;
+}
+
+.camera-container {
+  background: #1a1a1a;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.camera-guidelines {
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+  margin-top: 12px;
+}
+
+.progress-steps {
+  margin-top: 20px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-icon {
+  margin-bottom: 20px;
+  opacity: 0.3;
+}
+
+.scanning-state {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.scanning-animation {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 24px;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid #1890ff;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.scanning-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.scan-progress {
+  max-width: 300px;
+  margin: 24px auto 0;
+}
+
+.success-state {
+  animation: slideIn 0.5s ease-out;
+}
+
+.success-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.success-icon {
+  margin-right: 16px;
+}
+
+.student-details-card {
+  background: #fafafa;
+  border-radius: 8px;
+  padding: 24px;
+  border: 1px solid #f0f0f0;
+}
+
+.student-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.student-avatar {
+  background: linear-gradient(135deg, #1890ff, #36c9c9);
+  font-size: 24px;
+  font-weight: bold;
+  margin-right: 16px;
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+}
+
+.student-info {
+  flex: 1;
+}
+
+.detail-tag {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+
+.confidence-meter {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+}
+
+.meter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.confidence-bar {
+  margin-bottom: 8px;
+}
+
+.confidence-labels {
+  display: flex;
+  justify-content: space-between;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.next-student-btn {
+  flex: 2;
+  background: linear-gradient(135deg, #1890ff 0%, #36c9c9 100%);
+  border: none;
+  border-radius: 8px;
+}
+
+.change-course-btn {
+  flex: 1;
+  border-radius: 8px;
+}
+
+.stats-footer {
+  margin-top: 20px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.7;
+  }
+}
