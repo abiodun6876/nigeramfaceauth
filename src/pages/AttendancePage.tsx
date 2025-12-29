@@ -1,4 +1,4 @@
-// src/pages/AttendancePage.tsx - PROFESSIONAL VERSION (CLEANED)
+// src/pages/AttendancePage.tsx - SIMPLIFIED VERSION
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -9,9 +9,6 @@ import {
   Space,
   Typography,
   Alert,
-  Row,
-  Col,
-  Statistic,
   Modal,
   InputNumber,
   message,
@@ -21,21 +18,17 @@ import {
   Progress,
   Badge,
   Divider,
-  Switch,
   Tooltip,
 } from 'antd';
 import { 
   Camera, 
   Calendar, 
   CheckCircle, 
-  XCircle, 
   Users, 
   RefreshCw,
   Filter,
-  Download,
   Eye,
   Edit,
-  Clock,
   Shield
 } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
@@ -60,20 +53,14 @@ const AttendancePage: React.FC = () => {
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [scoreInputValue, setScoreInputValue] = useState<number>(2.00);
   const [selectedDate, setSelectedDate] = useState<string>(dayjs().format('YYYY-MM-DD'));
-  const [stats, setStats] = useState({
-    totalStudents: 0,
-    presentToday: 0,
-    attendanceRate: 0
-  });
   
   // Face recognition
   const [faceResult, setFaceResult] = useState<any>(null);
   const [matchedStudentData, setMatchedStudentData] = useState<any>(null);
   const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
-  const [autoCapture, setAutoCapture] = useState(true);
   const [currentStep, setCurrentStep] = useState(0);
 
-  // Quick stats
+  // Progress steps
   const steps = [
     { title: 'Select Course', icon: <Filter size={16} /> },
     { title: 'Face Scan', icon: <Camera size={16} /> },
@@ -115,18 +102,6 @@ const AttendancePage: React.FC = () => {
       
       if (attendanceError) throw attendanceError;
       setAttendanceRecords(attendanceData || []);
-      
-      // Calculate stats
-      const { data: studentsData } = await supabase
-        .from('students')
-        .select('student_id')
-        .eq('enrollment_status', 'enrolled');
-      
-      const totalStudents = studentsData?.length || 0;
-      const presentToday = attendanceData?.length || 0;
-      const attendanceRate = totalStudents > 0 ? (presentToday / totalStudents) * 100 : 0;
-      
-      setStats({ totalStudents, presentToday, attendanceRate });
       
     } catch (error: any) {
       console.error('Error fetching attendance:', error);
@@ -334,9 +309,8 @@ const AttendancePage: React.FC = () => {
       dataIndex: 'check_in_time',
       key: 'check_in_time',
       render: (time: string) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Clock size={12} />
-          <span>{time ? dayjs(time).format('HH:mm') : '--:--'}</span>
+        <div>
+          {time ? dayjs(time).format('HH:mm') : '--:--'}
         </div>
       ),
     },
@@ -346,7 +320,7 @@ const AttendancePage: React.FC = () => {
       key: 'score',
       render: (score: number) => (
         <Tag color={score >= 1.5 ? 'success' : score >= 1.0 ? 'warning' : 'error'}>
-          {score?.toFixed(2)} / 2.00
+          {score?.toFixed(2)}
         </Tag>
       ),
     },
@@ -357,27 +331,61 @@ const AttendancePage: React.FC = () => {
       render: (method: string) => (
         <Badge
           color={method === 'face_recognition' ? 'green' : 'blue'}
-          text={method === 'face_recognition' ? 'Face ID' : 'Manual'}
+          text={method === 'face_recognition' ? 'Face' : 'Manual'}
         />
       ),
     },
     {
       title: '',
       key: 'actions',
+      width: 50,
       render: (_: any, record: any) => (
-        <Button
-          size="small"
-          type="link"
-          icon={<Edit size={14} />}
-          onClick={() => {
-            setSelectedStudent(record);
-            setScoreInputValue(record.score || 2.00);
-            setScoreModalVisible(true);
-          }}
-        />
+        <Tooltip title="Edit score">
+          <Button
+            size="small"
+            type="link"
+            icon={<Edit size={14} />}
+            onClick={() => {
+              setSelectedStudent(record);
+              setScoreInputValue(record.score || 2.00);
+              setScoreModalVisible(true);
+            }}
+          />
+        </Tooltip>
       ),
     },
   ];
+
+  // Save score function
+  const saveScore = async () => {
+    if (!selectedStudent || !selectedCourseData) {
+      message.error('No student selected');
+      return;
+    }
+    
+    try {
+      const score = Math.min(Math.max(scoreInputValue, 0), 2.00);
+      
+      await supabase
+        .from('student_attendance')
+        .update({ 
+          score: score,
+          updated_at: new Date().toISOString()
+        })
+        .eq('student_id', selectedStudent.student_id)
+        .eq('course_code', selectedCourseData.code)
+        .eq('attendance_date', selectedDate);
+      
+      message.success('Score updated');
+      fetchAttendanceRecords();
+      setScoreModalVisible(false);
+      setSelectedStudent(null);
+      
+    } catch (error: any) {
+      console.error('Update score error:', error);
+      message.error('Failed to update score');
+    }
+  };
 
   useEffect(() => {
     fetchCourses();
@@ -400,7 +408,7 @@ const AttendancePage: React.FC = () => {
   }, [selectedCourse, selectedDate]);
 
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
       <div style={{ 
         display: 'flex', 
@@ -411,17 +419,17 @@ const AttendancePage: React.FC = () => {
         gap: 16
       }}>
         <div>
-          <Title level={3} style={{ marginBottom: 8, fontWeight: 600 }}>
+          <Title level={3} style={{ marginBottom: 4, fontWeight: 600 }}>
             Take Attendance
           </Title>
           <Text type="secondary" style={{ fontSize: '14px' }}>
-            Fast biometric attendance system
+            Quick face recognition attendance
           </Text>
         </div>
         
         <Space>
           <Tag color="blue" icon={<Shield size={12} />}>
-            {faceModelsLoaded ? 'AI Ready' : 'AI Loading...'}
+            {faceModelsLoaded ? 'AI Ready' : 'Loading...'}
           </Tag>
           <Text type="secondary" style={{ fontSize: '12px' }}>
             {dayjs(selectedDate).format('DD MMM YYYY')}
@@ -429,66 +437,18 @@ const AttendancePage: React.FC = () => {
         </Space>
       </div>
 
-      {/* Main Content Card */}
+      {/* Main Card */}
       <Card
         style={{
           marginBottom: 24,
           borderRadius: 12,
-          border: '1px solid #f0f0f0',
         }}
         bodyStyle={{ padding: isMobile ? '20px' : '24px' }}
       >
-        {/* Quick Stats Row */}
-        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={24} sm={8}>
-            <div style={{ textAlign: 'center' }}>
-              <Statistic
-                title="Total Students"
-                value={stats.totalStudents}
-                valueStyle={{ fontSize: '32px', fontWeight: 600 }}
-                prefix={<Users size={20} />}
-              />
-            </div>
-          </Col>
-          <Col xs={24} sm={8}>
-            <div style={{ textAlign: 'center' }}>
-              <Statistic
-                title="Present Today"
-                value={stats.presentToday}
-                valueStyle={{ 
-                  fontSize: '32px', 
-                  fontWeight: 600,
-                  color: stats.presentToday > 0 ? '#52c41a' : undefined 
-                }}
-                prefix={<CheckCircle size={20} />}
-              />
-            </div>
-          </Col>
-          <Col xs={24} sm={8}>
-            <div style={{ textAlign: 'center' }}>
-              <Statistic
-                title="Attendance Rate"
-                value={stats.attendanceRate.toFixed(1)}
-                suffix="%"
-                valueStyle={{ 
-                  fontSize: '32px', 
-                  fontWeight: 600,
-                  color: stats.attendanceRate > 70 ? '#52c41a' : '#f5222d'
-                }}
-              />
-            </div>
-          </Col>
-        </Row>
-
         {/* Control Section */}
-        <div style={{ 
-          backgroundColor: '#fafafa',
-          borderRadius: 8,
-          padding: '20px',
-          marginBottom: 24
-        }}>
-          <Row gutter={[16, 16]} align="middle">
-            <Col xs={24} md={6}>
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: 16, alignItems: isMobile ? 'stretch' : 'flex-end' }}>
+            <div style={{ flex: 1 }}>
               <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
                 Date
               </Text>
@@ -499,9 +459,9 @@ const AttendancePage: React.FC = () => {
                 size="large"
                 suffixIcon={<Calendar size={16} />}
               />
-            </Col>
+            </div>
             
-            <Col xs={24} md={10}>
+            <div style={{ flex: 2 }}>
               <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
                 Course
               </Text>
@@ -519,47 +479,22 @@ const AttendancePage: React.FC = () => {
                   label: `${course.code} - ${course.title}`,
                 }))}
               />
-            </Col>
+            </div>
             
-            <Col xs={24} md={8}>
-              <div style={{ 
-                display: 'flex', 
-                gap: 8, 
-                flexWrap: 'wrap',
-                justifyContent: isMobile ? 'center' : 'flex-end'
-              }}>
-                <Tooltip title="Auto-capture faces">
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 8,
-                    backgroundColor: '#fff',
-                    padding: '8px 12px',
-                    borderRadius: 6,
-                    border: '1px solid #d9d9d9'
-                  }}>
-                    <Text style={{ fontSize: '13px' }}>Auto-capture</Text>
-                    <Switch 
-                      size="small" 
-                      checked={autoCapture} 
-                      onChange={setAutoCapture}
-                    />
-                  </div>
-                </Tooltip>
-                
-                <Button
-                  type="primary"
-                  icon={<Camera size={16} />}
-                  onClick={startFaceAttendance}
-                  loading={loading}
-                  disabled={!selectedCourse}
-                  size="large"
-                >
-                  Start Face Scan
-                </Button>
-              </div>
-            </Col>
-          </Row>
+            <div style={{ flex: 1 }}>
+              <Button
+                type="primary"
+                icon={<Camera size={16} />}
+                onClick={startFaceAttendance}
+                loading={loading}
+                disabled={!selectedCourse}
+                size="large"
+                block={isMobile}
+              >
+                Start Face Scan
+              </Button>
+            </div>
+          </div>
         </div>
 
         {/* Progress Steps */}
@@ -568,7 +503,6 @@ const AttendancePage: React.FC = () => {
             <Steps
               current={currentStep}
               size="small"
-              labelPlacement="vertical"
               items={steps}
               style={{ maxWidth: 400, margin: '0 auto' }}
             />
@@ -622,9 +556,6 @@ const AttendancePage: React.FC = () => {
                   <Tag color="success">
                     {(faceResult.confidence * 100).toFixed(1)}% match
                   </Tag>
-                  <Text type="secondary" style={{ fontSize: '12px', marginLeft: 8 }}>
-                    {dayjs().format('HH:mm:ss')}
-                  </Text>
                 </div>
               </div>
             }
@@ -636,44 +567,36 @@ const AttendancePage: React.FC = () => {
           />
         )}
 
-        {/* Action Buttons */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center',
-          gap: 16,
-          marginBottom: 24,
-          flexWrap: 'wrap'
-        }}>
-          <Button
-            type="default"
-            icon={<Users size={16} />}
-            onClick={handleMarkAllPresent}
-            loading={loading}
-            disabled={!selectedCourse}
-          >
-            Mark All Present
-          </Button>
-          
-          <Button
-            type="dashed"
-            icon={<RefreshCw size={16} />}
-            onClick={() => fetchAttendanceRecords()}
-            loading={loading}
-          >
-            Refresh
-          </Button>
-          
-          <Button
-            type="text"
-            icon={<Download size={16} />}
-            onClick={() => message.info('Export feature coming soon')}
-          >
-            Export
-          </Button>
-        </div>
+        {/* Quick Actions */}
+        {selectedCourse && (
+          <div style={{ 
+            display: 'flex', 
+            gap: 12,
+            marginBottom: 24,
+            flexWrap: 'wrap'
+          }}>
+            <Button
+              type="default"
+              icon={<Users size={16} />}
+              onClick={handleMarkAllPresent}
+              loading={loading}
+            >
+              Mark All Present
+            </Button>
+            
+            <Button
+              type="dashed"
+              icon={<RefreshCw size={16} />}
+              onClick={() => fetchAttendanceRecords()}
+              loading={loading}
+            >
+              Refresh
+            </Button>
+          </div>
+        )}
       </Card>
 
-      {/* Attendance Records */}
+      {/* Attendance Table */}
       {selectedCourse && (
         <Card
           title={
@@ -681,20 +604,18 @@ const AttendancePage: React.FC = () => {
               <Eye size={16} />
               <span>Today's Attendance</span>
               <Badge 
-                count={stats.presentToday} 
-                style={{ marginLeft: 8, backgroundColor: '#52c41a' }} 
+                count={attendanceRecords.length} 
+                style={{ marginLeft: 8, backgroundColor: '#1890ff' }} 
               />
             </div>
           }
           extra={
-            <Text type="secondary" style={{ fontSize: '12px' }}>
-              {selectedCourseData?.code} • {selectedCourseData?.title}
-            </Text>
+            selectedCourseData && (
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                {selectedCourseData.code} • {dayjs(selectedDate).format('DD MMM')}
+              </Text>
+            )
           }
-          style={{
-            borderRadius: 12,
-            border: '1px solid #f0f0f0',
-          }}
         >
           <Table
             columns={columns}
@@ -703,7 +624,7 @@ const AttendancePage: React.FC = () => {
             pagination={{ 
               pageSize: 10,
               showSizeChanger: false,
-              showTotal: (total) => `${total} records`
+              simple: true
             }}
             scroll={{ x: true }}
             size="middle"
@@ -730,25 +651,17 @@ const AttendancePage: React.FC = () => {
 
       {/* Score Adjustment Modal */}
       <Modal
-        title="Adjust Attendance Score"
+        title="Adjust Score"
         open={scoreModalVisible}
         onCancel={() => setScoreModalVisible(false)}
-        onOk={() => {
-          // Save logic here
-          setScoreModalVisible(false);
-          message.success('Score updated');
-        }}
+        onOk={saveScore}
         width={400}
-        okText="Save Changes"
+        okText="Save"
+        cancelText="Cancel"
       >
         {selectedStudent && (
           <div>
-            <div style={{ 
-              backgroundColor: '#f6f9ff',
-              padding: '16px',
-              borderRadius: 8,
-              marginBottom: 20
-            }}>
+            <div style={{ marginBottom: 20 }}>
               <Text strong>{selectedStudent.student_name}</Text>
               <div style={{ fontSize: '13px', color: '#666', marginTop: 4 }}>
                 {selectedStudent.matric_number}
@@ -783,28 +696,35 @@ const AttendancePage: React.FC = () => {
         )}
       </Modal>
 
-      {/* Footer Note */}
+      {/* Empty State */}
       {!selectedCourse && (
-        <div style={{ textAlign: 'center', marginTop: 40, padding: '40px 0' }}>
-          <div style={{
-            width: 64,
-            height: 64,
-            backgroundColor: '#f0f9ff',
-            borderRadius: '50%',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 16
-          }}>
-            <Camera size={32} color="#1890ff" />
+        <Card style={{ marginTop: 40 }}>
+          <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+            <div style={{
+              width: 80,
+              height: 80,
+              backgroundColor: '#f0f9ff',
+              borderRadius: '50%',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 20
+            }}>
+              <Camera size={36} color="#1890ff" />
+            </div>
+            <Title level={4} style={{ marginBottom: 12, fontWeight: 500 }}>
+              Select a Course to Begin
+            </Title>
+            <Text type="secondary" style={{ maxWidth: 400, margin: '0 auto', display: 'block' }}>
+              Choose a course and date to start recording attendance with face recognition.
+            </Text>
+            <div style={{ marginTop: 24 }}>
+              <Text type="secondary" style={{ fontSize: '12px' }}>
+                Face recognition requires enrolled students with face data
+              </Text>
+            </div>
           </div>
-          <Title level={4} style={{ marginBottom: 8, fontWeight: 500 }}>
-            Select a Course to Begin
-          </Title>
-          <Text type="secondary" style={{ maxWidth: 500, margin: '0 auto', display: 'block' }}>
-            Choose a course and date to start recording attendance with AI-powered face recognition.
-          </Text>
-        </div>
+        </Card>
       )}
     </div>
   );
