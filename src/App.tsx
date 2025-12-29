@@ -476,21 +476,92 @@ function App() {
                 boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
               }}>
                 {!user ? (
-                  <div style={{ textAlign: 'center', padding: isMobile ? '20px' : '50px' }}>
-                    <div style={{ marginTop: '20px' }}>
-                      <Button 
-                        type="primary" 
-                        size={isMobile ? 'middle' : 'large'}
-                        onClick={handleLogin} 
-                        icon={<LogIn />}
-                      >
-                        Get Started 
-                      </Button>
-                    </div>
-                    <div style={{ marginTop: 30 }}>
-                      <PWAInstallPrompt />
-                    </div>
-                  </div>
+                 <div style={{ textAlign: 'center', padding: isMobile ? '20px' : '50px' }}>
+  <Card
+    style={{
+      maxWidth: isMobile ? '100%' : 500,
+      margin: '0 auto',
+      borderRadius: 12,
+      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+      border: '1px solid #f0f0f0',
+    }}
+    bodyStyle={{
+      padding: isMobile ? '24px' : '40px',
+    }}
+  >
+    <div style={{ marginBottom: 24 }}>
+      <Title level={isMobile ? 4 : 3} style={{ marginBottom: 8 }}>
+        Welcome to ABUAD Face Authentication System
+      </Title>
+      <Text type="secondary" style={{ fontSize: isMobile ? '14px' : '16px' }}>
+        Secure biometric attendance system for students and lecturers
+      </Text>
+    </div>
+
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 16 
+    }}>
+      <div style={{ 
+        backgroundColor: '#1890ff15',
+        borderRadius: '50%',
+        padding: isMobile ? 20 : 24,
+        marginBottom: 8,
+      }}>
+        <LogIn size={isMobile ? 48 : 64} color="#1890ff" />
+      </div>
+
+      <Title level={isMobile ? 5 : 4} style={{ marginBottom: 8 }}>
+        Get Started
+      </Title>
+      <Text type="secondary" style={{ 
+        marginBottom: 24,
+        fontSize: isMobile ? '14px' : '16px',
+        maxWidth: 400 
+      }}>
+        Login to access the face recognition attendance system, 
+        enroll students, and manage attendance records
+      </Text>
+
+      <Button 
+        type="primary" 
+        size={isMobile ? 'large' : 'large'}
+        onClick={handleLogin} 
+        icon={<LogIn style={{ marginRight: 8 }} />}
+        style={{
+          height: isMobile ? 48 : 56,
+          fontSize: isMobile ? '16px' : '18px',
+          padding: isMobile ? '0 32px' : '0 40px',
+          borderRadius: 8,
+          fontWeight: 600,
+        }}
+        block={isMobile}
+      >
+        Login to Continue
+      </Button>
+
+      <div style={{ 
+        width: '100%', 
+        marginTop: 32,
+        paddingTop: 24,
+        borderTop: '1px solid #f0f0f0'
+      }}>
+        <Text type="secondary" style={{ 
+          display: 'block',
+          marginBottom: 16,
+          fontSize: isMobile ? '12px' : '14px'
+        }}>
+          For the best experience:
+        </Text>
+        <div style={{ marginTop: 16 }}>
+          <PWAInstallPrompt />
+        </div>
+      </div>
+    </div>
+  </Card>
+</div>
                 ) : (
                   <>
                     <BackButton />
