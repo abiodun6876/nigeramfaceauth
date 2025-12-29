@@ -509,21 +509,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
         />
       )}
 
-      <Alert
-        message="Environment Check"
-        description={
-          <div style={{ fontSize: '12px', fontFamily: 'monospace' }}>
-            <div>URL: {debugInfo.href}</div>
-            <div>Protocol: {debugInfo.protocol} ({debugInfo.isHttps ? 'HTTPS ✓' : 'Not HTTPS ✗'})</div>
-            <div>Hostname: {debugInfo.hostname} ({debugInfo.isLocalhost ? 'Localhost ✓' : 'Not localhost ✗'})</div>
-            <div>MediaDevices: {debugInfo.mediaDevices ? 'Supported ✓' : 'Not supported ✗'})</div>
-            <div>getUserMedia: {debugInfo.getUserMedia ? 'Available ✓' : 'Not available ✗'}</div>
-            <div>Browser: {debugInfo.userAgent?.split(' ').slice(-2).join(' ')}</div>
-          </div>
-        }
-        type={debugInfo.isHttps || debugInfo.isLocalhost ? "success" : "warning"}
-        style={{ marginBottom: 20 }}
-      />
+      
 
       {error && (
         <Alert
