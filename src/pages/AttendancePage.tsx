@@ -1,19 +1,21 @@
-// src/pages/AttendancePage.tsx - ULTRA SIMPLIFIED VERSION
+// src/pages/AttendancePage.tsx - PROFESSIONAL MODERN VERSION
 import React, { useState, useEffect } from 'react';
 import {
   Card,
   Select,
   Button,
   Typography,
-  Alert,
   message,
   Grid,
-  DatePicker,
   Steps,
   Tag,
   Space,
-  Modal,
-  Progress
+  Progress,
+  Avatar,
+  Divider,
+  Row,
+  Col,
+  Statistic
 } from 'antd';
 import { 
   Camera, 
@@ -21,12 +23,19 @@ import {
   CheckCircle, 
   Filter,
   Shield,
-  User
+  User,
+  Users,
+  Clock,
+  BookOpen,
+  Award,
+  ChevronRight,
+  X
 } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 import faceRecognition from '../utils/faceRecognition';
 import dayjs from 'dayjs';
+import './AttendancePage.css';
 
 const { Title, Text } = Typography;
 const { useBreakpoint } = Grid;
@@ -43,12 +52,13 @@ const AttendancePage: React.FC = () => {
   const [faceResult, setFaceResult] = useState<any>(null);
   const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const [studentStats, setStudentStats] = useState<any>(null);
 
   // Progress steps
   const steps = [
-    { title: 'Select Course', icon: <Filter size={16} /> },
-    { title: 'Face Scan', icon: <Camera size={16} /> },
-    { title: 'Complete', icon: <CheckCircle size={16} /> },
+    { title: 'Select Course', icon: <BookOpen size={16} /> },
+    { title: 'Face Verification', icon: <Camera size={16} /> },
+    { title: 'Attendance Confirmed', icon: <Award size={16} /> },
   ];
 
   // Fetch courses
@@ -67,21 +77,31 @@ const AttendancePage: React.FC = () => {
     }
   };
 
+  // Fetch course statistics
+  const fetchCourseStats = async (courseCode: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('student_attendance')
+        .select('student_id')
+        .eq('course_code', courseCode)
+        .eq('attendance_date', dayjs().format('YYYY-MM-DD'));
+      
+      if (!error && data) {
+        setStudentStats({
+          attendedToday: data.length,
+          totalEnrolled: selectedCourseData?.enrolled_count || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
   // Record Attendance
   const recordAttendance = async (studentData: any, result: any) => {
     try {
       const attendanceDate = dayjs().format('YYYY-MM-DD');
       const studentId = studentData.student_id;
-      const studentName = studentData.name;
-      
-      // Check existing attendance
-      const { data: existingAttendance } = await supabase
-        .from('student_attendance')
-        .select('id, score')
-        .eq('student_id', studentId)
-        .eq('course_code', selectedCourseData.code)
-        .eq('attendance_date', attendanceDate)
-        .single();
       
       const attendanceData = {
         student_id: studentId,
@@ -100,6 +120,14 @@ const AttendancePage: React.FC = () => {
         updated_at: new Date().toISOString()
       };
       
+      const { data: existingAttendance } = await supabase
+        .from('student_attendance')
+        .select('id')
+        .eq('student_id', studentId)
+        .eq('course_code', selectedCourseData.code)
+        .eq('attendance_date', attendanceDate)
+        .single();
+      
       if (existingAttendance) {
         await supabase
           .from('student_attendance')
@@ -111,7 +139,7 @@ const AttendancePage: React.FC = () => {
           .insert([attendanceData]);
       }
       
-      return { success: true, studentName };
+      return { success: true, studentName: studentData.name };
       
     } catch (error: any) {
       console.error('Record attendance error:', error);
@@ -131,12 +159,14 @@ const AttendancePage: React.FC = () => {
         
         if (matches.length === 0) {
           message.error('No matching student found');
+          setCurrentStep(0);
           return;
         }
         
         const bestMatch = matches[0];
         if (bestMatch.confidence < 0.65) {
           message.warning('Low confidence match. Please try again.');
+          setCurrentStep(0);
           return;
         }
         
@@ -148,7 +178,8 @@ const AttendancePage: React.FC = () => {
           .maybeSingle();
         
         if (!studentData) {
-          message.error('Student not enrolled');
+          message.error('Student not enrolled in this course');
+          setCurrentStep(0);
           return;
         }
         
@@ -160,16 +191,27 @@ const AttendancePage: React.FC = () => {
           photoUrl: result.photoUrl
         });
         
+        // Update stats
+        if (studentStats) {
+          setStudentStats(prev => ({
+            ...prev,
+            attendedToday: prev.attendedToday + 1
+          }));
+        }
+        
         setFaceResult({
           ...result,
           student: {
             name: studentData.name,
             matric_number: studentData.matric_number,
-            student_id: studentData.student_id
+            student_id: studentData.student_id,
+            department: studentData.department,
+            level: studentData.level
           },
           confidence: bestMatch.confidence,
           success: true,
-          attendanceResult
+          attendanceResult,
+          timestamp: new Date().toISOString()
         });
         
         message.success(`Attendance recorded for ${studentData.name}`);
@@ -186,12 +228,12 @@ const AttendancePage: React.FC = () => {
   const startFaceAttendance = async () => {
     if (!faceModelsLoaded) {
       try {
-        message.info('Loading face recognition models...');
+        message.loading({ content: 'Initializing face recognition...', key: 'modelLoad', duration: 2 });
         await faceRecognition.loadModels();
         setFaceModelsLoaded(true);
-        message.success('Face recognition ready!');
+        message.success({ content: 'Face recognition ready!', key: 'modelLoad' });
       } catch (error) {
-        message.warning('Face recognition loading...');
+        message.warning({ content: 'Using basic face detection', key: 'modelLoad' });
       }
     }
     setIsCameraActive(true);
@@ -217,269 +259,371 @@ const AttendancePage: React.FC = () => {
       const course = courses.find(c => c.id === selectedCourse);
       setSelectedCourseData(course);
       setCurrentStep(0);
+      if (course?.code) {
+        fetchCourseStats(course.code);
+      }
     }
-  }, [selectedCourse]);
+  }, [selectedCourse, courses]);
 
   return (
-    <div style={{ padding: isMobile ? '16px' : '24px', maxWidth: 800, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <Title level={3} style={{ marginBottom: 8, fontWeight: 600 }}>
-          Face Attendance
-        </Title>
-        <Text type="secondary" style={{ fontSize: '16px' }}>
-          Scan student faces to mark attendance
-        </Text>
+    <div className="attendance-container">
+      {/* Modern Header */}
+      <div className="attendance-header">
+        <div className="header-content">
+          <div className="header-left">
+            <div className="logo-container">
+              <Camera size={24} color="#1890ff" />
+              <Title level={4} style={{ margin: 0, marginLeft: 12 }}>
+                Face Attendance System
+              </Title>
+            </div>
+            <Text type="secondary" className="header-subtitle">
+              Automated biometric attendance marking
+            </Text>
+          </div>
+          <div className="header-right">
+            <Tag color={faceModelsLoaded ? "success" : "processing"} className="status-tag">
+              <Shield size={12} style={{ marginRight: 6 }} />
+              {faceModelsLoaded ? 'AI Active' : 'AI Loading'}
+            </Tag>
+            <Text type="secondary" className="date-display">
+              <Clock size={14} style={{ marginRight: 6 }} />
+              {dayjs().format('DD MMM YYYY • HH:mm')}
+            </Text>
+          </div>
+        </div>
       </div>
 
-      {/* Main Card */}
-      <Card
-        style={{
-          borderRadius: 12,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-        }}
-        bodyStyle={{ padding: isMobile ? '20px' : '32px' }}
-      >
-        {/* Progress Steps */}
-        <div style={{ marginBottom: 32 }}>
-          <Steps
-            current={currentStep}
-            size="small"
-            items={steps}
-          />
-        </div>
-
-       
-{currentStep === 0 && (
-  <div style={{ textAlign: 'center' }}>
-    <div style={{ marginBottom: 24 }}>
-      <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '16px' }}>
-        Select Course
-      </Text>
-      <Select
-        style={{ width: '100%', maxWidth: 400 }}
-        placeholder="Search or select course..."
-        value={selectedCourse}
-        onChange={setSelectedCourse}
-        loading={loading}
-        size="large"
-        showSearch
-        filterOption={(input, option) =>
-          (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-        }
-        optionFilterProp="label"
-        options={courses.map(course => ({
-          value: course.id,
-          label: `${course.code} - ${course.title}`,
-        }))}
-      />
-    </div>
-
-    <div style={{ 
-      backgroundColor: '#f6f9ff', 
-      padding: '20px', 
-      borderRadius: 8,
-      marginTop: 24 
-    }}>
-      <User size={24} color="#1890ff" style={{ marginBottom: 12 }} />
-      <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-        Ready to scan
-      </Text>
-      <Tag color="blue" icon={<Shield size={12} />}>
-        {faceModelsLoaded ? 'Face AI Ready' : 'Loading AI...'}
-      </Tag>
-    </div>
-  </div>
-)}
-       
-
-        {/* Face Camera Section */}
-        {isCameraActive && currentStep >= 1 && (
-          <div style={{ textAlign: 'center' }}>
-            <FaceCamera
-              mode="attendance"
-              onAttendanceComplete={handleAttendanceComplete}
-            />
-            
-            <div style={{ marginTop: 24 }}>
-              <Button
-                type="default"
-                onClick={() => {
-                  setIsCameraActive(false);
-                  setCurrentStep(0);
-                }}
-              >
-                Cancel Scan
-              </Button>
-            </div>
+      {/* Main Dashboard */}
+      <div className="dashboard-grid">
+        {/* Left Column - Course Selection & Camera */}
+        <Card className="dashboard-card control-card">
+          <div className="card-header">
+            <Title level={5} className="card-title">
+              <BookOpen size={18} style={{ marginRight: 10 }} />
+              Course Selection
+            </Title>
           </div>
-        )}
-
-        {/* Start Scan Button */}
-        {selectedCourse && currentStep === 0 && !isCameraActive && (
-          <div style={{ textAlign: 'center', marginTop: 32 }}>
-            <Button
-              type="primary"
-              icon={<Camera size={20} />}
-              onClick={startFaceAttendance}
+          
+          <div className="course-selection-section">
+            <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '14px' }}>
+              Select Course
+            </Text>
+            <Select
+              className="course-select"
+              placeholder="Search course by code or title..."
+              value={selectedCourse}
+              onChange={setSelectedCourse}
               loading={loading}
               size="large"
-              style={{
-                height: 56,
-                fontSize: '18px',
-                padding: '0 40px',
-                borderRadius: 12,
-                background: 'linear-gradient(135deg, #1890ff, #52c41a)',
-                border: 'none'
-              }}
-            >
-              Start Face Scan
-            </Button>
-            <Text type="secondary" style={{ display: 'block', marginTop: 16, fontSize: '14px' }}>
-              Position student in front of the camera
-            </Text>
-          </div>
-        )}
-
-        {/* Result Display */}
-        {faceResult?.success && (
-          <div style={{ 
-            marginTop: 32,
-            textAlign: 'center',
-            animation: 'fadeIn 0.5s ease-in'
-          }}>
-            <div style={{
-              width: 64,
-              height: 64,
-              backgroundColor: '#52c41a20',
-              borderRadius: '50%',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 16
-            }}>
-              <CheckCircle size={32} color="#52c41a" />
-            </div>
+              showSearch
+              filterOption={(input, option) =>
+                (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+              }
+              optionFilterProp="label"
+              suffixIcon={<ChevronRight size={16} />}
+              options={courses.map(course => ({
+                value: course.id,
+                label: `${course.code} - ${course.title}`,
+              }))}
+            />
             
-            <Title level={4} style={{ marginBottom: 8, color: '#52c41a' }}>
-              Attendance Recorded!
-            </Title>
-            
-            <div style={{ 
-              backgroundColor: '#f6ffed',
-              padding: '20px',
-              borderRadius: 8,
-              marginBottom: 16,
-              border: '1px solid #b7eb8f'
-            }}>
-              <Text strong style={{ fontSize: '18px', display: 'block', marginBottom: 8 }}>
-                {faceResult.student?.name}
-              </Text>
-              <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-                {faceResult.student?.matric_number}
-              </Text>
-              
-              <div style={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                gap: 16,
-                marginTop: 16
-              }}>
-                <Tag color="success" style={{ fontSize: '14px', padding: '4px 12px' }}>
-                  {(faceResult.confidence * 100).toFixed(1)}% match
-                </Tag>
-                <Tag color="blue" style={{ fontSize: '14px', padding: '4px 12px' }}>
-                  {selectedCourseData?.code}
-                </Tag>
-                <Tag color="purple" style={{ fontSize: '14px', padding: '4px 12px' }}>
-                  {dayjs().format('HH:mm')}
-                </Tag>
+            {selectedCourseData && (
+              <div className="course-info-panel">
+                <div className="course-info-header">
+                  <Text strong style={{ fontSize: '16px' }}>
+                    {selectedCourseData.code}
+                  </Text>
+                  <Tag color="blue" className="level-tag">
+                    Level {selectedCourseData.level}
+                  </Tag>
+                </div>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+                  {selectedCourseData.title}
+                </Text>
+                
+                <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+                  <Col span={12}>
+                    <Statistic
+                      title="Enrolled Students"
+                      value={selectedCourseData.enrolled_count || 0}
+                      prefix={<Users size={14} />}
+                      valueStyle={{ fontSize: '20px', fontWeight: 600 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Statistic
+                      title="Attended Today"
+                      value={studentStats?.attendedToday || 0}
+                      prefix={<User size={14} />}
+                      valueStyle={{ 
+                        fontSize: '20px', 
+                        fontWeight: 600,
+                        color: studentStats?.attendedToday > 0 ? '#52c41a' : undefined
+                      }}
+                    />
+                  </Col>
+                </Row>
               </div>
-            </div>
-
-            {/* Confidence Progress Bar */}
-            <div style={{ maxWidth: 300, margin: '20px auto' }}>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Match Confidence
-              </Text>
-              <Progress 
-                percent={Number((faceResult.confidence * 100).toFixed(1))} 
-                strokeColor={
-                  faceResult.confidence > 0.8 ? '#52c41a' : 
-                  faceResult.confidence > 0.6 ? '#faad14' : '#f5222d'
-                }
-                format={() => `${(faceResult.confidence * 100).toFixed(1)}%`}
-              />
-              <Text type="secondary" style={{ fontSize: '12px', marginTop: 8 }}>
-                {faceResult.confidence > 0.8 ? 'High Confidence' : 
-                 faceResult.confidence > 0.6 ? 'Medium Confidence' : 'Low Confidence'}
-              </Text>
-            </div>
-
-            {/* Next Student Button */}
-            <div style={{ marginTop: 32 }}>
+            )}
+          </div>
+          
+          {/* Camera Section */}
+          {selectedCourse && !isCameraActive && (
+            <div className="camera-control-section">
+              <div className="scan-ready-card">
+                <div className="scan-icon">
+                  <Camera size={32} color="#1890ff" />
+                </div>
+                <div className="scan-text">
+                  <Text strong style={{ display: 'block', marginBottom: 4 }}>
+                    Ready to Scan
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: '13px' }}>
+                    Ensure student is facing the camera with good lighting
+                  </Text>
+                </div>
+              </div>
+              
               <Button
                 type="primary"
-                icon={<Camera size={16} />}
+                icon={<Camera size={20} />}
                 onClick={startFaceAttendance}
-                style={{ marginRight: 12 }}
+                loading={loading}
+                className="scan-button"
+                size="large"
+                block
               >
-                Scan Next Student
-              </Button>
-              <Button
-                type="default"
-                onClick={() => {
-                  setFaceResult(null);
-                  setCurrentStep(0);
-                }}
-              >
-                Select Another Course
+                Start Face Verification
               </Button>
             </div>
-          </div>
-        )}
+          )}
+          
+          {isCameraActive && (
+            <div className="camera-active-section">
+              <div className="camera-header">
+                <Text strong style={{ fontSize: '16px' }}>
+                  <Camera size={18} style={{ marginRight: 8 }} />
+                  Live Face Scan
+                </Text>
+                <Button
+                  type="text"
+                  icon={<X size={16} />}
+                  onClick={() => {
+                    setIsCameraActive(false);
+                    setCurrentStep(0);
+                  }}
+                  className="close-camera-btn"
+                >
+                  Cancel
+                </Button>
+              </div>
+              
+              <div className="camera-container">
+                <FaceCamera
+                  mode="attendance"
+                  onAttendanceComplete={handleAttendanceComplete}
+                />
+                <div className="camera-guidelines">
+                  <Text type="secondary" style={{ fontSize: '12px', textAlign: 'center' }}>
+                    Position face within the frame • Ensure good lighting • Remove sunglasses/hats
+                  </Text>
+                </div>
+              </div>
+            </div>
+          )}
+        </Card>
 
-        {/* No Course Selected */}
-        {!selectedCourse && (
-          <div style={{ textAlign: 'center', padding: '40px 0' }}>
-            <div style={{
-              width: 80,
-              height: 80,
-              backgroundColor: '#f0f9ff',
-              borderRadius: '50%',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 20
-            }}>
-              <Camera size={36} color="#1890ff" />
-            </div>
-            <Title level={4} style={{ marginBottom: 12, fontWeight: 500 }}>
-              Select a Course to Begin
+        {/* Right Column - Results & Progress */}
+        <Card className="dashboard-card result-card">
+          <div className="card-header">
+            <Title level={5} className="card-title">
+              <Award size={18} style={{ marginRight: 10 }} />
+              Attendance Results
             </Title>
-            <Text type="secondary" style={{ maxWidth: 400, margin: '0 auto', display: 'block' }}>
-              Choose a course to start recording attendance with face recognition.
-            </Text>
+            <Steps
+              current={currentStep}
+              size="small"
+              items={steps}
+              className="progress-steps"
+            />
           </div>
-        )}
-      </Card>
-
-      {/* Status Footer */}
-      <div style={{ 
-        textAlign: 'center', 
-        marginTop: 32,
-        padding: '16px',
-        borderTop: '1px solid #f0f0f0'
-      }}>
-        <Space>
-          <Tag color={faceModelsLoaded ? "green" : "orange"}>
-            {faceModelsLoaded ? 'Face AI Active ✓' : 'AI Loading...'}
-          </Tag>
-          <Text type="secondary" style={{ fontSize: '12px' }}>
-            AFE Babalola University • {dayjs().format('DD MMM YYYY')}
-          </Text>
-        </Space>
+          
+          {/* Empty State */}
+          {!faceResult && currentStep === 0 && (
+            <div className="empty-state">
+              <div className="empty-icon">
+                <User size={48} color="#d9d9d9" />
+              </div>
+              <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '16px' }}>
+                No Attendance Yet
+              </Text>
+              <Text type="secondary" style={{ textAlign: 'center' }}>
+                {selectedCourse 
+                  ? 'Start scanning to mark attendance for selected course'
+                  : 'Select a course to begin'}
+              </Text>
+            </div>
+          )}
+          
+          {/* Scanning State */}
+          {isCameraActive && currentStep === 1 && (
+            <div className="scanning-state">
+              <div className="scanning-animation">
+                <div className="pulse-ring"></div>
+                <Camera size={32} color="#1890ff" className="scanning-icon" />
+              </div>
+              <Text strong style={{ display: 'block', marginBottom: 8, fontSize: '18px' }}>
+                Scanning Face...
+              </Text>
+              <Text type="secondary" style={{ textAlign: 'center' }}>
+                Please keep still while we verify your identity
+              </Text>
+              <Progress
+                percent={45}
+                status="active"
+                strokeColor={{ '0%': '#108ee9', '100%': '#87d068' }}
+                className="scan-progress"
+              />
+            </div>
+          )}
+          
+          {/* Success State */}
+          {faceResult?.success && (
+            <div className="success-state">
+              <div className="success-header">
+                <div className="success-icon">
+                  <CheckCircle size={40} color="#52c41a" />
+                </div>
+                <div>
+                  <Title level={4} style={{ margin: 0, color: '#52c41a' }}>
+                    Attendance Confirmed!
+                  </Title>
+                  <Text type="secondary">
+                    Successfully recorded for {selectedCourseData?.code}
+                  </Text>
+                </div>
+              </div>
+              
+              <Divider style={{ margin: '20px 0' }} />
+              
+              {/* Student Details */}
+              <div className="student-details-card">
+                <div className="student-header">
+                  <Avatar size={56} className="student-avatar">
+                    {faceResult.student?.name?.charAt(0) || 'S'}
+                  </Avatar>
+                  <div className="student-info">
+                    <Text strong style={{ fontSize: '20px', display: 'block' }}>
+                      {faceResult.student?.name}
+                    </Text>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                      {faceResult.student?.matric_number}
+                    </Text>
+                    <Space size={[8, 8]} wrap>
+                      <Tag color="blue" className="detail-tag">
+                        {faceResult.student?.department}
+                      </Tag>
+                      <Tag color="purple" className="detail-tag">
+                        Level {faceResult.student?.level}
+                      </Tag>
+                      <Tag color="green" className="detail-tag">
+                        {dayjs(faceResult.timestamp).format('HH:mm')}
+                      </Tag>
+                    </Space>
+                  </div>
+                </div>
+                
+                <Divider style={{ margin: '16px 0' }} />
+                
+                {/* Confidence Meter */}
+                <div className="confidence-meter">
+                  <div className="meter-header">
+                    <Text strong>Match Confidence</Text>
+                    <Text strong style={{ 
+                      color: faceResult.confidence > 0.8 ? '#52c41a' : 
+                             faceResult.confidence > 0.6 ? '#faad14' : '#f5222d'
+                    }}>
+                      {(faceResult.confidence * 100).toFixed(1)}%
+                    </Text>
+                  </div>
+                  <Progress
+                    percent={Number((faceResult.confidence * 100).toFixed(1))}
+                    strokeColor={{
+                      '0%': '#f5222d',
+                      '50%': '#faad14',
+                      '100%': '#52c41a'
+                    }}
+                    strokeLinecap="round"
+                    className="confidence-bar"
+                  />
+                  <div className="confidence-labels">
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      {faceResult.confidence > 0.8 ? 'High Confidence Match' : 
+                       faceResult.confidence > 0.6 ? 'Good Match' : 'Verify Manually'}
+                    </Text>
+                  </div>
+                </div>
+                
+                {/* Action Buttons */}
+                <div className="action-buttons">
+                  <Button
+                    type="primary"
+                    icon={<Camera size={16} />}
+                    onClick={startFaceAttendance}
+                    className="next-student-btn"
+                    size="large"
+                  >
+                    Scan Next Student
+                  </Button>
+                  <Button
+                    type="default"
+                    onClick={() => {
+                      setFaceResult(null);
+                      setCurrentStep(0);
+                    }}
+                    className="change-course-btn"
+                    size="large"
+                  >
+                    Change Course
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Course Stats Footer */}
+          {selectedCourseData && (
+            <div className="stats-footer">
+              <Divider style={{ margin: '20px 0' }} />
+              <Row gutter={[16, 16]}>
+                <Col span={12}>
+                  <div className="stat-item">
+                    <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                      Total Enrolled
+                    </Text>
+                    <Text strong style={{ fontSize: '18px' }}>
+                      {selectedCourseData.enrolled_count || 0}
+                    </Text>
+                  </div>
+                </Col>
+                <Col span={12}>
+                  <div className="stat-item">
+                    <Text type="secondary" style={{ fontSize: '12px', display: 'block' }}>
+                      Present Today
+                    </Text>
+                    <Text strong style={{ 
+                      fontSize: '18px',
+                      color: studentStats?.attendedToday > 0 ? '#52c41a' : undefined
+                    }}>
+                      {studentStats?.attendedToday || 0}
+                    </Text>
+                  </div>
+                </Col>
+              </Row>
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
