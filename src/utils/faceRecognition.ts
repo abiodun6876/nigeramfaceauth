@@ -385,7 +385,7 @@ class FaceRecognition {
         console.error(`Failed to sync embedding for student ${embedding.studentId}:`, error);
       }
     }
-    
+      
     return syncedEmbeddings;
   }
   
