@@ -1,7 +1,7 @@
 {
-  "short_name": "ABUAD Face",
-  "name": "ABUAD Face Attendance System",
-  "description": "Student attendance management using face authentication technology",
+  "short_name": "Nigeram Face",
+  "name": "Nigeram Face Attendance System",
+  "description": "Staffs attendance management using face authentication technology",
   "id": "/?source=pwa",
   "start_url": "/",
   "background_color": "#f0f2f5",
