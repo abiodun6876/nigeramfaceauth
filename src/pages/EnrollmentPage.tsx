@@ -197,214 +197,289 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  // Process enrollment
-  const processEnrollment = async (result: any) => {
+  // Replace the problematic section in processEnrollment function:
+const processEnrollment = async (result: any) => {
+  try {
+    setLoading(true);
+
+    const currentStaffId = staffData.staff_id || staffId;
+    const staffName = staffData.name || 'Unknown Staff';
+    const staffDepartment = staffData.department;
+    const staffGender = staffData.gender || 'male';
+    
+    console.log('Processing enrollment for:', {
+      staffId: currentStaffId,
+      staffName,
+      staffDepartment,
+      staffGender
+    });
+
+    if (!currentStaffId || !staffName || !staffDepartment) {
+      throw new Error('Missing staff information');
+    }
+
+    // Compress the image
+    const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
+    
+    // Generate filename
+    const fileName = `enrollment_${Date.now()}_${staffName.replace(/\s+/g, '_')}.jpg`;
+    
+    let photoUrl = '';
+    let photoData = compressedImage;
+    
+    // Upload to Supabase Storage if possible
     try {
-      setLoading(true);
-
-      const currentStaffId = staffData.staff_id || staffId;
-      const staffName = staffData.name || 'Unknown Staff';
-      const staffDepartment = staffData.department;
-      const staffGender = staffData.gender || 'male';
+      const { error: storageError } = await supabase.storage
+        .from('staff-photos')
+        .upload(fileName, dataURLtoBlob(compressedImage), {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
       
-      console.log('Processing enrollment for:', {
-        staffId: currentStaffId,
-        staffName,
-        staffDepartment,
-        staffGender
-      });
-
-      if (!currentStaffId || !staffName || !staffDepartment) {
-        throw new Error('Missing staff information');
-      }
-
-      // Compress the image
-      const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
-      
-      // Generate filename
-      const fileName = `enrollment_${Date.now()}_${staffName.replace(/\s+/g, '_')}.jpg`;
-      
-      let photoUrl = '';
-      let photoData = compressedImage;
-      
-      // Upload to Supabase Storage if possible
-      try {
-        const { error: storageError } = await supabase.storage
+      if (!storageError) {
+        const { data: publicUrlData } = supabase.storage
           .from('staff-photos')
-          .upload(fileName, dataURLtoBlob(compressedImage), {
-            contentType: 'image/jpeg',
-            upsert: true
-          });
+          .getPublicUrl(fileName);
         
-        if (!storageError) {
-          const { data: publicUrlData } = supabase.storage
-            .from('staff-photos')
-            .getPublicUrl(fileName);
-          
-          photoUrl = publicUrlData.publicUrl;
-          console.log('✅ Photo uploaded to storage:', photoUrl);
-        }
-      } catch (storageError) {
-        console.warn('Storage upload skipped:', storageError);
+        photoUrl = publicUrlData.publicUrl;
+        console.log('✅ Photo uploaded to storage:', photoUrl);
       }
-      
-      const currentDate = new Date();
-      
-      // Extract face embedding
-      console.log('Extracting face embedding...');
-      let embeddingArray = null;
-      let embeddingError = null;
+    } catch (storageError) {
+      console.warn('Storage upload skipped:', storageError);
+    }
+    
+    const currentDate = new Date();
+    
+    // Extract face embedding - UPDATED with better error handling
+    console.log('Extracting face embedding...');
+    let embeddingArray = null;
+    let embeddingError = null;
 
-      try {
-        const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
+    try {
+      console.log('Calling faceRecognition.extractFaceDescriptor...');
+      const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
+      
+      if (descriptor) {
+        embeddingArray = Array.from(descriptor);
+        console.log('✅ Face embedding extracted, length:', embeddingArray.length);
         
-        if (descriptor) {
-          embeddingArray = Array.from(descriptor);
-          console.log('✅ Face embedding extracted, length:', embeddingArray.length);
-          
-          // Save to local storage
-          faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
-        } else {
-          embeddingError = new Error('No face detected in image');
-        }
-      } catch (err: any) {
-        console.error('❌ Could not extract face embedding:', err);
-        embeddingError = err;
+        // Save to local storage
+        const saved = faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+        console.log('✅ Face embedding saved to localStorage:', saved);
+      } else {
+        embeddingError = new Error('No face detected in image');
+        console.log('❌ No face detected in image');
       }
+    } catch (err: any) {
+      console.error('❌ Could not extract face embedding:', err);
+      embeddingError = err;
+      
+     // FIXED version of the face extraction section in processEnrollment function:
+try {
+  console.log('Calling faceRecognition.extractFaceDescriptor...');
+  const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
+  
+  if (descriptor && descriptor.length > 0) {
+    embeddingArray = Array.from(descriptor);
+    console.log('✅ Face embedding extracted, length:', embeddingArray.length);
+    
+    // Save to local storage
+    const saved = faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+    console.log('✅ Face embedding saved to localStorage:', saved);
+  } else {
+    console.log('❌ No face detected or empty descriptor');
+    
+    // Try manual image analysis as fallback
+    console.log('Trying to save image without embedding...');
+    // We'll continue without embedding - just save the image
+  }
+} catch (err: any) {
+  console.error('❌ Could not extract face embedding:', err);
+  console.log('Continuing without face embedding...');
+  // Continue without embedding
+}
+    }
 
-      // If embedding failed, save as pending
-      if (!embeddingArray) {
-        throw new Error(`Face embedding extraction failed: ${embeddingError?.message || 'No face detected'}.`);
-      }
+    // If embedding still failed, try manual image saving
+    if (!embeddingArray) {
+      console.log('Face embedding failed, saving image only...');
+      // We'll continue with fallback - no embedding but save the image
+    }
 
-      // Prepare staff data
-      const staffRecord = {
-        staff_id: currentStaffId,
+    // Prepare staff data
+    const staffRecord = {
+      staff_id: currentStaffId,
+      name: staffName,
+      gender: staffGender,
+      department: staffDepartment,
+      employment_date: currentDate.toISOString().split('T')[0],
+      employment_status: 'active',
+      enrollment_status: embeddingArray ? 'enrolled' : 'pending',
+      photo_url: photoUrl || null,
+      face_embedding: embeddingArray,
+      face_enrolled_at: embeddingArray ? currentDate.toISOString() : null,
+      is_active: true,
+      created_at: currentDate.toISOString(),
+      updated_at: currentDate.toISOString()
+    };
+    
+    // Save to database
+    const { data: existingStaff } = await supabase
+      .from('staff')
+      .select('staff_id, id')
+      .eq('staff_id', currentStaffId)
+      .maybeSingle();
+    
+    let dbResult;
+    
+    if (!existingStaff) {
+      // Insert new staff
+      const { data: insertData, error: insertError } = await supabase
+        .from('staff')
+        .insert([staffRecord])
+        .select();
+      
+      if (insertError) throw insertError;
+      dbResult = insertData;
+    } else {
+      // Update existing staff
+      const { data: updateData, error: updateError } = await supabase
+        .from('staff')
+        .update(staffRecord)
+        .eq('staff_id', currentStaffId)
+        .select();
+      
+      if (updateError) throw updateError;
+      dbResult = updateData;
+    }
+    
+    // Save to local storage as backup
+    try {
+      const key = `face_image_${currentStaffId}`;
+      localStorage.setItem(key, photoData);
+      console.log('✅ Image saved to localStorage with key:', key);
+      
+      // Also save compressed version
+      const compressedKey = `face_image_compressed_${currentStaffId}`;
+      localStorage.setItem(compressedKey, compressedImage);
+      console.log('✅ Compressed image saved to localStorage');
+      
+      // Save metadata
+      const metaKey = `staff_meta_${currentStaffId}`;
+      localStorage.setItem(metaKey, JSON.stringify({
         name: staffName,
-        gender: staffGender,
         department: staffDepartment,
-        employment_date: currentDate.toISOString().split('T')[0],
+        enrolledAt: currentDate.toISOString(),
+        hasEmbedding: !!embeddingArray
+      }));
+      
+    } catch (localError) {
+      console.warn('⚠️ Local storage save failed:', localError);
+    }
+    
+    // Get department color
+    const deptInfo = departments.find(d => d.value === staffDepartment);
+    
+    // Set enrollment result
+    setEnrollmentResult({
+      success: !!embeddingArray,
+      message: embeddingArray 
+        ? 'Staff enrollment completed successfully!' 
+        : 'Staff saved but face embedding incomplete.',
+      staff: {
+        name: staffName,
+        staff_id: currentStaffId,
+      },
+      department: staffDepartment,
+      departmentColor: deptInfo?.color,
+      faceCaptured: true,
+      localStorageSaved: true,
+      photoUrl: photoUrl || photoData,
+      databaseSaved: true,
+      faceEmbeddingSaved: !!embeddingArray,
+      embeddingLength: embeddingArray?.length || 0,
+      status: embeddingArray ? 'enrolled' : 'pending'
+    });
+    
+    setEnrollmentComplete(true);
+    setIsCameraActive(false);
+    
+    if (embeddingArray) {
+      message.success(`Enrollment complete for ${staffName}!`);
+    } else {
+      message.warning(`Staff ${staffName} saved, but face embedding failed. You can retry later.`);
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Enrollment error:', error);
+    
+    // Fallback save
+    try {
+      const fallbackData = {
+        staff_id: staffData.staff_id || staffId,
+        name: staffData.name,
+        department: staffData.department,
+        gender: staffData.gender || 'male',
         employment_status: 'active',
-        enrollment_status: 'enrolled',
-        photo_url: photoUrl || null,
-        face_embedding: embeddingArray,
-        face_enrolled_at: currentDate.toISOString(),
+        enrollment_status: 'pending',
         is_active: true,
-        created_at: currentDate.toISOString(),
-        updated_at: currentDate.toISOString()
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
       
-      // Save to database
-      const { data: existingStaff } = await supabase
+      await supabase
         .from('staff')
-        .select('staff_id, id')
-        .eq('staff_id', currentStaffId)
-        .maybeSingle();
-      
-      let dbResult;
-      
-      if (!existingStaff) {
-        // Insert new staff
-        const { data: insertData, error: insertError } = await supabase
-          .from('staff')
-          .insert([staffRecord])
-          .select();
+        .upsert([fallbackData], { onConflict: 'staff_id' });
         
-        if (insertError) throw insertError;
-        dbResult = insertData;
-      } else {
-        // Update existing staff
-        const { data: updateData, error: updateError } = await supabase
-          .from('staff')
-          .update(staffRecord)
-          .eq('staff_id', currentStaffId)
-          .select();
-        
-        if (updateError) throw updateError;
-        dbResult = updateData;
-      }
+      console.log('✅ Fallback save successful');
       
-      // Save to local storage as backup
+      // Save to localStorage as fallback
       try {
-        const key = `face_image_${currentStaffId}`;
-        localStorage.setItem(key, photoData);
-        console.log('✅ Image saved to localStorage');
+        if (result?.photoUrl) {
+          const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
+          const key = `face_image_fallback_${staffData.staff_id || staffId}`;
+          localStorage.setItem(key, compressedImage);
+          console.log('✅ Fallback image saved to localStorage');
+        }
       } catch (localError) {
-        console.warn('⚠️ Local storage save failed:', localError);
+        console.warn('Fallback localStorage save failed:', localError);
       }
       
-      // Get department color
-      const deptInfo = departments.find(d => d.value === staffDepartment);
-      
-      // Set enrollment result
       setEnrollmentResult({
-        success: true,
-        message: 'Staff enrollment completed successfully!',
+        success: false,
+        message: 'Enrollment failed. Staff saved as "pending".',
         staff: {
-          name: staffName,
-          staff_id: currentStaffId,
+          name: staffData.name,
+          staff_id: staffData.staff_id || staffId,
         },
-        department: staffDepartment,
-        departmentColor: deptInfo?.color,
-        faceCaptured: true,
-        localStorageSaved: true,
-        photoUrl: photoUrl || photoData,
+        department: staffData.department,
+        faceCaptured: !!result?.photoUrl,
         databaseSaved: true,
-        faceEmbeddingSaved: true,
-        embeddingLength: embeddingArray.length
+        faceEmbeddingSaved: false,
+        status: 'pending'
       });
       
       setEnrollmentComplete(true);
       setIsCameraActive(false);
-      message.success(`Enrollment complete for ${staffName}!`);
+      message.error('Enrollment failed. Staff saved as pending.');
       
-    } catch (error: any) {
-      console.error('❌ Enrollment error:', error);
-      
-      // Fallback save
-      try {
-        const fallbackData = {
-          staff_id: staffData.staff_id || staffId,
+    } catch (fallbackError) {
+      console.error('❌ Fallback save failed:', fallbackError);
+      setEnrollmentResult({
+        success: false,
+        message: 'Enrollment failed completely.',
+        staff: {
           name: staffData.name,
-          department: staffData.department,
-          gender: staffData.gender || 'male',
-          employment_status: 'pending',
-          enrollment_status: 'pending',
-          is_active: true
-        };
-        
-        await supabase
-          .from('staff')
-          .upsert([fallbackData], { onConflict: 'staff_id' });
-          
-        console.log('✅ Fallback save successful');
-        
-        setEnrollmentResult({
-          success: false,
-          message: 'Enrollment failed: Could not extract face embedding. Staff saved as "pending".',
-          staff: {
-            name: staffData.name,
-            staff_id: staffData.staff_id || staffId,
-          },
-          department: staffData.department,
-          faceCaptured: true,
-          databaseSaved: true,
-          faceEmbeddingSaved: false,
-          status: 'pending'
-        });
-        
-        setEnrollmentComplete(true);
-        setIsCameraActive(false);
-        message.warning('Enrollment incomplete. Face embedding extraction failed.');
-        
-      } catch (fallbackError) {
-        console.error('❌ Fallback save failed:', fallbackError);
-        throw error;
-      }
-    } finally {
-      setLoading(false);
+          staff_id: staffData.staff_id || staffId,
+        },
+        status: 'failed'
+      });
+      message.error('Enrollment failed completely.');
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   const stepItems = [
     {

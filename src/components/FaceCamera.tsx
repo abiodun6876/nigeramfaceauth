@@ -1,4 +1,4 @@
-// UPDATE FaceCamera.tsx - Add auto-start for enrollment mode
+// UPDATED FaceCamera.tsx - Full Screen Fix
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Typography, 
@@ -80,7 +80,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       // Front camera for kiosk mode
       const constraints = { 
         video: { 
-          facingMode: 'user', // Always use front camera
+          facingMode: 'user',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         }, 
@@ -271,49 +271,25 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     };
   }, []);
 
-  // Manual capture trigger for enrollment (if needed)
-  const triggerCapture = () => {
-    handleCapture();
-  };
-
-  // Expose capture function for parent component
-  useEffect(() => {
-    if (mode === 'enrollment') {
-      // Add a small delay then trigger first capture
-      const initialCaptureTimer = setTimeout(() => {
-        if (isCameraActive && !isCapturing) {
-          console.log('Initial auto-capture for enrollment');
-          handleCapture();
-        }
-      }, 2000);
-      
-      return () => clearTimeout(initialCaptureTimer);
-    }
-  }, [isCameraActive, mode]);
-
   return (
     <div style={{
       width: '100%',
-      height: '100%',
+      height: '100%', // Full height
       display: 'flex',
       flexDirection: 'column',
-      padding: '8px',
       backgroundColor: '#0a1a35'
     }}>
       {/* Camera Feed - Full screen */}
       <div style={{
         flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        alignItems: 'center',
-        position: 'relative'
+        position: 'relative',
+        width: '100%',
+        height: '100%'
       }}>
         <div style={{ 
           width: '100%',
           height: '100%',
           backgroundColor: '#000',
-          borderRadius: 12,
           overflow: 'hidden',
           border: isCameraActive ? '3px solid rgba(0, 255, 150, 0.5)' : '3px solid rgba(0, 150, 255, 0.3)',
           position: 'relative',
@@ -496,7 +472,8 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 16
+        gap: 16,
+        backgroundColor: 'rgba(0, 0, 0, 0.2)'
       }}>
         <div style={{ 
           display: 'flex', 
