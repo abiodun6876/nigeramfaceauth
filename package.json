@@ -2,7 +2,7 @@
   "name": "nigeram-staff-attendance",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://abuad-face-attendance.netlify.app",
+  "homepage": "https://nigeramfaceauth.netlify.app",
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
     "@supabase/supabase-js": "^2.88.0",

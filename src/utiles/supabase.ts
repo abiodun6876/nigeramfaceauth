@@ -8,7 +8,7 @@ console.log('REACT_APP_SUPABASE_ANON_KEY exists:', !!process.env.REACT_APP_SUPAB
 console.log('REACT_APP_SUPABASE_ANON_KEY first 10 chars:', 
   process.env.REACT_APP_SUPABASE_ANON_KEY?.substring(0, 10) + '...');
 
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://hdcneyipanqhnfjetauv.supabase.co';
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://kevcsmymkhdyquzzkpdl.supabase.co';
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
 
 if (!supabaseUrl || !supabaseAnonKey) {

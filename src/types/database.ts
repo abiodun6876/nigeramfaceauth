@@ -9,7 +9,7 @@ export interface Staff {
   phone?: string;
   gender?: string;
   date_of_birth?: string;
-  department: 'studio' | 'logistics' | 'bakery' | 'spa';  // Your specific departments
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';  
   department_name?: string;
   position?: string;
   employment_date: string;
