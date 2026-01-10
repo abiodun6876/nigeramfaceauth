@@ -13,7 +13,7 @@
     <meta property="og:title" content="Nigeram Staff Attendance System" />
     <meta property="og:description" content="Staff attendance management using biometric face authentication" />
     <meta property="og:image" content="%PUBLIC_URL%/social-preview.png" />
-    <meta property="og:url" content="https://nigeram-attendance.netlify.app" />
+    <meta property="og:url" content="https://nigeramfaceauth.netlify.app/" />
     <meta property="og:type" content="website" />
     
     <!-- Twitter Card Meta Tags -->
@@ -64,7 +64,7 @@
       "@type": "WebApplication",
       "name": "Nigeram Staff Attendance System",
       "description": "Biometric face recognition attendance system for Nigeram Ventures staff",
-      "url": "https://nigeram-attendance.netlify.app",
+      "url": "https://nigeramfaceauth.netlify.app/",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "Web",
       "offers": {
@@ -75,7 +75,7 @@
       "author": {
         "@type": "Organization",
         "name": "Nigeram Ventures",
-        "url": "https://nigeram-ventures.com"
+        "url": "https://nigeramfaceauth.netlify.app/"
       },
       "featureList": [
         "Face Recognition Attendance",
@@ -191,27 +191,6 @@
       }
     </style>
     
-    <!-- Service Worker Registration Script -->
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/service-worker.js').then(
-            function(registration) {
-              console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            },
-            function(err) {
-              console.log('ServiceWorker registration failed: ', err);
-            }
-          );
-        });
-      }
-      
-      // Hide loading spinner when app is ready
-      window.addEventListener('load', function() {
-        setTimeout(function() {
-          document.body.classList.remove('loading');
-        }, 1000);
-      });
-    </script>
+   
   </body>
 </html>
