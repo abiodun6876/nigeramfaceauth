@@ -1,5 +1,5 @@
-// src/pages/EnrollmentPage.tsx - UPDATED WITH AUTO-START CAMERA
-import React, { useState, useEffect } from 'react';
+// src/pages/EnrollmentPage.tsx - FIXED VERSION
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Card, 
   Form, 
@@ -17,7 +17,7 @@ import {
   Spin,
   Badge
 } from 'antd';
-import { Camera, User, Briefcase, CheckCircle, Users, ArrowLeft, Clock } from 'lucide-react';
+import { Camera, User, Briefcase, CheckCircle, Users, ArrowLeft, Clock, XCircle } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../utils/imageUtils';
@@ -40,6 +40,8 @@ const EnrollmentPage: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [captureCount, setCaptureCount] = useState(0);
   const [lastCaptureResult, setLastCaptureResult] = useState<any>(null);
+  
+  const captureTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Nigeram specific departments
   const departments = [
@@ -73,6 +75,12 @@ const EnrollmentPage: React.FC = () => {
       }
     };
     loadModels();
+
+    return () => {
+      if (captureTimeoutRef.current) {
+        clearTimeout(captureTimeoutRef.current);
+      }
+    };
   }, [form]);
 
   const handleNext = async () => {
@@ -96,11 +104,13 @@ const EnrollmentPage: React.FC = () => {
         const departmentValues = await departmentForm.getFieldsValue();
         setStaffData((prev: any) => ({ ...prev, ...departmentValues }));
         
-        // Auto-start camera when moving to step 2
+        // Move to camera step and auto-start camera
         setCurrentStep(2);
+        
+        // Short delay to ensure UI updates
         setTimeout(() => {
           setIsCameraActive(true);
-        }, 300);
+        }, 100);
       }
     } catch (error: any) {
       console.error('Error in handleNext:', error);
@@ -141,7 +151,7 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  // Handle face capture from camera
+  // Handle face capture from camera - SIMPLIFIED like AttendancePage
   const handleFaceCapture = async (result: any) => {
     if (!result.success || !result.photoUrl || isProcessing) return;
     
@@ -150,12 +160,12 @@ const EnrollmentPage: React.FC = () => {
     
     try {
       console.log('=== FACE CAPTURE TRIGGERED ===');
-      console.log('Capture result:', result);
+      console.log('Staff Data:', staffData);
       
       // Set temporary success message
       setLastCaptureResult({
         success: true,
-        message: 'Face captured successfully! Processing...',
+        message: 'Processing face data...',
         temporary: true
       });
       
@@ -170,12 +180,20 @@ const EnrollmentPage: React.FC = () => {
         temporary: false
       });
       message.error(`Capture failed: ${error.message}`);
+      
+      // Clear error after 2 seconds
+      setTimeout(() => {
+        setLastCaptureResult(null);
+      }, 2000);
     } finally {
       setIsProcessing(false);
-      // Clear temporary message after 2 seconds
-      setTimeout(() => {
+      // Clear temporary message after 1.5 seconds
+      if (captureTimeoutRef.current) {
+        clearTimeout(captureTimeoutRef.current);
+      }
+      captureTimeoutRef.current = setTimeout(() => {
         setLastCaptureResult(prev => prev?.temporary ? null : prev);
-      }, 2000);
+      }, 1500);
     }
   };
 
@@ -184,10 +202,10 @@ const EnrollmentPage: React.FC = () => {
     try {
       setLoading(true);
 
-      const currentStaffId = result.staffId || result.staff_id || staffData.staff_id || staffId;
-      const staffName = result.staffName || staffData.name || 'Unknown Staff';
-      const staffDepartment = result.department || staffData.department;
-      const staffGender = result.gender || staffData.gender || 'male';
+      const currentStaffId = staffData.staff_id || staffId;
+      const staffName = staffData.name || 'Unknown Staff';
+      const staffDepartment = staffData.department;
+      const staffGender = staffData.gender || 'male';
       
       console.log('Processing enrollment for:', {
         staffId: currentStaffId,
@@ -634,11 +652,13 @@ const EnrollmentPage: React.FC = () => {
                 setCurrentStep(0);
                 setEnrollmentComplete(false);
                 setEnrollmentResult(null);
+                setIsCameraActive(false);
+                setCaptureCount(0);
+                setLastCaptureResult(null);
+                
                 form.resetFields();
                 departmentForm.resetFields();
                 setStaffData({});
-                setIsCameraActive(false);
-                setCaptureCount(0);
                 
                 form.setFieldsValue({
                   gender: 'male',
@@ -684,7 +704,7 @@ const EnrollmentPage: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <Text strong style={{ color: '#00aaff', fontSize: 16 }}>
-                  {staffData.name}
+                  {staffData.name || 'Staff Name'}
                 </Text>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <Tag color="blue">{staffId}</Tag>
@@ -716,7 +736,7 @@ const EnrollmentPage: React.FC = () => {
             </div>
           </div>
           
-          {/* Camera Section */}
+          {/* Camera Section - UPDATED to match AttendancePage */}
           <div style={{ 
             flex: 1,
             display: 'flex',
@@ -761,20 +781,34 @@ const EnrollmentPage: React.FC = () => {
               </div>
             </div>
             
-            {/* Camera Feed - Auto-start */}
-            <div style={{ flex: 1, position: 'relative' }}>
-              <FaceCamera
-                mode="enrollment"
-                staff={{
-                  id: staffData.staff_id || staffId,
-                  name: staffData.name,
-                  staff_id: staffData.staff_id || staffId,
-                  department: staffData.department
-                }}
-                onEnrollmentComplete={handleFaceCapture}
-                autoCapture={true}
-                captureInterval={2000}
-              />
+            {/* Camera Feed - Full screen like AttendancePage */}
+            <div style={{ 
+              flex: 1,
+              minHeight: 0,
+              position: 'relative'
+            }}>
+              {isCameraActive && (
+                <div style={{ 
+                  height: '100%',
+                  borderRadius: 16,
+                  overflow: 'hidden',
+                  border: '2px solid rgba(0, 150, 255, 0.3)',
+                  boxShadow: '0 0 30px rgba(0, 150, 255, 0.2)'
+                }}>
+                  <FaceCamera
+                    mode="enrollment"
+                    staff={{
+                      id: staffData.staff_id || staffId,
+                      name: staffData.name,
+                      staff_id: staffData.staff_id || staffId,
+                      department: staffData.department
+                    }}
+                    onEnrollmentComplete={handleFaceCapture}
+                    autoCapture={true}
+                    captureInterval={3000}
+                  />
+                </div>
+              )}
               
               {/* Processing Overlay */}
               {isProcessing && (
@@ -794,11 +828,11 @@ const EnrollmentPage: React.FC = () => {
                 </div>
               )}
               
-              {/* Last Capture Result */}
-              {lastCaptureResult && !lastCaptureResult.temporary && (
+              {/* Last Capture Result - Like AttendancePage */}
+              {lastCaptureResult && (
                 <div style={{
                   position: 'absolute',
-                  bottom: 20,
+                  bottom: 80,
                   left: 0,
                   right: 0,
                   textAlign: 'center',
@@ -815,25 +849,46 @@ const EnrollmentPage: React.FC = () => {
                     border: lastCaptureResult.success 
                       ? '1px solid rgba(0, 255, 150, 0.5)' 
                       : '1px solid rgba(255, 50, 50, 0.5)',
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: 600,
-                    backdropFilter: 'blur(10px)'
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 0 20px rgba(0, 0, 0, 0.3)'
                   }}>
                     {lastCaptureResult.success ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <CheckCircle size={18} />
+                        <CheckCircle size={20} />
                         <span>{lastCaptureResult.message}</span>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <circle cx="12" cy="12" r="10"/>
-                          <line x1="15" y1="9" x2="9" y2="15"/>
-                          <line x1="9" y1="9" x2="15" y2="15"/>
-                        </svg>
+                        <XCircle size={20} />
                         <span>{lastCaptureResult.message}</span>
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Scan Status Overlay */}
+              {isProcessing && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 20,
+                  left: 0,
+                  right: 0,
+                  textAlign: 'center'
+                }}>
+                  <div style={{
+                    display: 'inline-block',
+                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                    color: '#00ffaa',
+                    padding: '8px 20px',
+                    borderRadius: 20,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    backdropFilter: 'blur(10px)'
+                  }}>
+                    SCANNING...
                   </div>
                 </div>
               )}
@@ -847,7 +902,7 @@ const EnrollmentPage: React.FC = () => {
             }}>
               <Alert
                 message="Instructions"
-                description="Position face in the frame. The camera will automatically capture and process facial data. Ensure good lighting and face the camera directly."
+                description="Position face in the frame. The camera will automatically capture and process facial data every 3 seconds."
                 type="info"
                 showIcon
                 style={{ 
@@ -862,61 +917,129 @@ const EnrollmentPage: React.FC = () => {
     },
   ];
 
+  // Force camera to start when on step 2
+  useEffect(() => {
+    if (currentStep === 2 && !isCameraActive) {
+      console.log('Auto-starting camera for enrollment');
+      setIsCameraActive(true);
+    }
+  }, [currentStep, isCameraActive]);
+
   return (
     <div style={{ 
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#f0f2f5',
-      padding: '16px'
+      backgroundColor: '#0a1a35',
+      padding: '12px',
+      color: '#ffffff'
     }}>
-      <Title level={2} style={{ marginBottom: 8 }}>
-        Staff Face Enrollment
-      </Title>
-      <Text type="secondary" style={{ marginBottom: 16 }}>
-        Nigeram Ventures - Biometric Staff Enrollment System
-      </Text>
-
-      <Card style={{ 
+      <div style={{ 
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        <Steps 
-          current={currentStep} 
-          style={{ marginBottom: 24 }}
-          items={stepItems.map((item, index) => ({
-            key: index,
-            title: window.innerWidth < 768 ? '' : item.title,
-            icon: item.icon,
-          }))}
-        />
-
-        <div style={{ flex: 1, minHeight: 0 }}>
-          {stepItems[currentStep].content}
+        {/* Header */}
+        <div style={{ marginBottom: 16 }}>
+          <Title level={2} style={{ color: '#ffffff', marginBottom: 4 }}>
+            Staff Face Enrollment
+          </Title>
+          <Text type="secondary" style={{ color: '#aaccff' }}>
+            Nigeram Ventures - Biometric Staff Enrollment System
+          </Text>
         </div>
 
-        {!enrollmentComplete && currentStep < 2 && (
-          <div style={{ marginTop: 20, textAlign: 'center' }}>
-            <Space>
-              {currentStep > 0 && (
-                <Button onClick={handleBack} size="large">
-                  Back
-                </Button>
-              )}
-              <Button 
-                type="primary" 
-                onClick={handleNext} 
-                size="large"
-                loading={loading}
-              >
-                {currentStep === 1 ? 'Proceed to Face Enrollment' : 'Next'}
-              </Button>
-            </Space>
+        <Card style={{ 
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          backgroundColor: 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <Steps 
+            current={currentStep} 
+            style={{ marginBottom: 24 }}
+            items={stepItems.map((item, index) => ({
+              key: index,
+              title: window.innerWidth < 768 ? '' : item.title,
+              icon: item.icon,
+            }))}
+          />
+
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+            {stepItems[currentStep].content}
           </div>
-        )}
-      </Card>
+
+          {!enrollmentComplete && currentStep < 2 && (
+            <div style={{ marginTop: 20, textAlign: 'center' }}>
+              <Space>
+                {currentStep > 0 && (
+                  <Button 
+                    onClick={handleBack} 
+                    size="large"
+                    style={{
+                      backgroundColor: 'rgba(0, 150, 255, 0.1)',
+                      border: '1px solid rgba(0, 150, 255, 0.3)',
+                      color: '#00aaff'
+                    }}
+                  >
+                    Back
+                  </Button>
+                )}
+                <Button 
+                  type="primary" 
+                  onClick={handleNext} 
+                  size="large"
+                  loading={loading}
+                  style={{
+                    backgroundColor: '#00aaff',
+                    border: 'none',
+                    boxShadow: '0 0 15px rgba(0, 170, 255, 0.3)'
+                  }}
+                >
+                  {currentStep === 1 ? 'Proceed to Face Enrollment' : 'Next'}
+                </Button>
+              </Space>
+            </div>
+          )}
+        </Card>
+      </div>
+
+      {/* Footer Status */}
+      <div style={{ 
+        padding: '8px 16px',
+        backgroundColor: 'rgba(10, 26, 53, 0.8)',
+        borderTop: '1px solid rgba(0, 150, 255, 0.2)',
+        backdropFilter: 'blur(10px)',
+        marginTop: 8,
+        borderRadius: 8
+      }}>
+        <div style={{ 
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <Space>
+            <div style={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: faceModelsLoaded ? '#00ffaa' : '#ffaa00',
+              boxShadow: faceModelsLoaded ? '0 0 8px #00ffaa' : '0 0 8px #ffaa00'
+            }} />
+            <Text style={{ fontSize: 11, color: '#aaccff' }}>
+              {faceModelsLoaded ? 'READY' : 'LOADING MODELS'}
+            </Text>
+          </Space>
+          <Text style={{ fontSize: 11, color: '#aaccff' }}>
+            <Clock size={10} style={{ marginRight: 4 }} />
+            {dayjs().format('HH:mm')}
+          </Text>
+        </div>
+      </div>
       
       {/* Add CSS animations */}
       <style>
