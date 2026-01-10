@@ -1,15 +1,10 @@
-// src/components/FaceCamera.tsx - MOBILE-KIOSK OPTIMIZED
+// src/components/FaceCamera.tsx - MOBILE-KIOSK OPTIMIZED (AUTO ONLY)
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Card, 
-  Button, 
-  Alert, 
   Typography, 
-  Space, 
-  Progress, 
-  Tag
+  Progress
 } from 'antd';
-import { Camera, VideoOff } from 'lucide-react';
+import { VideoOff } from 'lucide-react';
 
 const { Text } = Typography;
 
@@ -36,7 +31,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [lastCaptureTime, setLastCaptureTime] = useState<number>(0);
   const [captureCount, setCaptureCount] = useState(0);
-  const [autoCaptureActive, setAutoCaptureActive] = useState(autoCapture);
+  const [autoCaptureActive] = useState(autoCapture); // Always true
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -224,18 +219,6 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     }, 100);
   };
 
-  // Toggle auto-capture
-  const toggleAutoCapture = () => {
-    const newState = !autoCaptureActive;
-    setAutoCaptureActive(newState);
-    
-    if (newState && isCameraActive && mode === 'attendance') {
-      startAutoCapture();
-    } else {
-      stopAutoCapture();
-    }
-  };
-
   // Auto-start camera on mount for attendance
   useEffect(() => {
     if (mode === 'attendance') {
@@ -270,27 +253,27 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '16px',
-      backgroundColor: '#f0f2f5'
+      padding: '8px',
+      backgroundColor: '#0a1a35'
     }}>
-      {/* Camera Feed - Takes 70% of screen */}
+      {/* Camera Feed - Full screen */}
       <div style={{
-        flex: 7,
+        flex: 1,
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        alignItems: 'center'
+        alignItems: 'center',
+        position: 'relative'
       }}>
         <div style={{ 
           width: '100%',
           height: '100%',
-          maxHeight: '70vh',
           backgroundColor: '#000',
-          borderRadius: 16,
+          borderRadius: 12,
           overflow: 'hidden',
-          border: isCameraActive ? '4px solid #52c41a' : '4px solid #d9d9d9',
+          border: isCameraActive ? '3px solid rgba(0, 255, 150, 0.5)' : '3px solid rgba(0, 150, 255, 0.3)',
           position: 'relative',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)'
+          boxShadow: '0 8px 32px rgba(0,0,0,0.4)'
         }}>
           <video
             ref={videoRef}
@@ -314,16 +297,16 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               color: '#fff',
-              backgroundColor: '#1a1a1a'
+              backgroundColor: '#0a1a35'
             }}>
-              <VideoOff size={64} />
+              <VideoOff size={48} color="rgba(0, 150, 255, 0.7)" />
               <Text style={{ 
-                color: '#fff', 
+                color: 'rgba(0, 150, 255, 0.7)', 
                 marginTop: 16,
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: 'bold'
               }}>
-                Camera Loading...
+                Starting Camera...
               </Text>
             </div>
           )}
@@ -337,38 +320,45 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
               right: 12,
               display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center'
+              alignItems: 'center',
+              zIndex: 10
             }}>
+              {/* Auto-scan indicator */}
               <div style={{
-                backgroundColor: autoCaptureActive ? 'rgba(82, 196, 26, 0.9)' : 'rgba(250, 173, 20, 0.9)',
-                color: 'white',
-                padding: '8px 16px',
-                borderRadius: 20,
-                fontSize: 14,
+                backgroundColor: 'rgba(0, 255, 150, 0.2)',
+                color: '#00ffaa',
+                padding: '6px 12px',
+                borderRadius: 16,
+                fontSize: 12,
                 fontWeight: 'bold',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 8
+                gap: 6,
+                border: '1px solid rgba(0, 255, 150, 0.3)',
+                backdropFilter: 'blur(10px)'
               }}>
                 <div style={{ 
-                  width: 10, 
-                  height: 10, 
+                  width: 8, 
+                  height: 8, 
                   borderRadius: '50%',
-                  backgroundColor: isCapturing ? '#1890ff' : '#fff',
+                  backgroundColor: isCapturing ? '#00aaff' : '#00ffaa',
                   animation: isCapturing ? 'pulse 1s infinite' : 'none'
                 }} />
-                {autoCaptureActive ? `AUTO-SCAN: ${captureCount}` : 'MANUAL MODE'}
+                AUTO-SCAN: {captureCount}
               </div>
               
+              {/* Ready status */}
               <div style={{
-                backgroundColor: 'rgba(0,0,0,0.7)',
-                color: 'white',
-                padding: '8px 16px',
-                borderRadius: 20,
-                fontSize: 14,
-                fontWeight: 'bold'
+                backgroundColor: 'rgba(0, 150, 255, 0.2)',
+                color: '#00aaff',
+                padding: '6px 12px',
+                borderRadius: 16,
+                fontSize: 12,
+                fontWeight: 'bold',
+                border: '1px solid rgba(0, 150, 255, 0.3)',
+                backdropFilter: 'blur(10px)'
               }}>
-                {isCapturing ? 'CAPTURING...' : 'READY'}
+                {isCapturing ? 'PROCESSING...' : 'READY'}
               </div>
             </div>
           )}
@@ -382,207 +372,145 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
               transform: 'translate(-50%, -50%)',
               width: '60%',
               height: '70%',
-              border: '3px dashed rgba(255,255,255,0.5)',
+              border: '2px dashed rgba(0, 255, 150, 0.5)',
               borderRadius: 8,
-              pointerEvents: 'none'
+              pointerEvents: 'none',
+              boxShadow: '0 0 20px rgba(0, 255, 150, 0.2)'
             }}>
               <div style={{
                 position: 'absolute',
-                top: '50%',
+                bottom: -30,
                 left: '50%',
-                transform: 'translate(-50%, -50%)',
-                color: 'rgba(255,255,255,0.7)',
+                transform: 'translateX(-50%)',
+                color: 'rgba(0, 255, 150, 0.8)',
                 fontSize: 12,
                 fontWeight: 'bold',
-                textAlign: 'center'
+                textAlign: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                padding: '4px 12px',
+                borderRadius: 12,
+                whiteSpace: 'nowrap'
               }}>
                 Position Face Here
               </div>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Controls Panel - Takes 30% of screen */}
-      <div style={{
-        flex: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        paddingTop: 16
-      }}>
-        {/* Status Indicators */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          gap: 16,
-          marginBottom: 16
-        }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: 8 
-          }}>
-            <div style={{ 
-              width: 16, 
-              height: 16, 
-              borderRadius: '50%',
-              backgroundColor: isCameraActive ? '#52c41a' : '#ff4d4f'
-            }} />
-            <Text strong style={{ fontSize: 14 }}>
-              {isCameraActive ? 'CAMERA ACTIVE' : 'CAMERA OFF'}
-            </Text>
-          </div>
-          
-          {isCapturing && (
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 8 
-            }}>
-              <div style={{ 
-                width: 16, 
-                height: 16, 
-                borderRadius: '50%',
-                backgroundColor: '#1890ff',
-                animation: 'pulse 1s infinite'
-              }} />
-              <Text strong style={{ fontSize: 14, color: '#1890ff' }}>
-                PROCESSING...
-              </Text>
-            </div>
-          )}
-        </div>
-
-        {/* Processing Bar */}
+        {/* Processing Bar - Minimal */}
         {isCapturing && (
-          <div style={{ marginBottom: 16 }}>
+          <div style={{
+            position: 'absolute',
+            bottom: 20,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '80%',
+            maxWidth: 400,
+            zIndex: 10
+          }}>
             <Progress 
               percent={progress} 
               status="active" 
-              strokeColor={{ from: '#108ee9', to: '#87d068' }}
-              strokeWidth={8}
+              strokeColor={{ from: '#00aaff', to: '#00ffaa' }}
+              strokeWidth={4}
+              showInfo={false}
             />
-          </div>
-        )}
-
-        {/* Control Buttons */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          gap: 12,
-          marginBottom: 16
-        }}>
-          <Button
-            type="primary"
-            icon={<Camera size={20} />}
-            onClick={handleCapture}
-            disabled={!isCameraActive || isCapturing}
-            size="large"
-            style={{
-              height: 56,
-              fontSize: 16,
-              padding: '0 24px',
-              borderRadius: 12,
-              flex: 1,
-              maxWidth: 180
-            }}
-          >
-            CAPTURE NOW
-          </Button>
-          
-          {mode === 'attendance' && (
-            <Button
-              type={autoCaptureActive ? "default" : "primary"}
-              onClick={toggleAutoCapture}
-              size="large"
-              style={{
-                height: 56,
-                fontSize: 16,
-                padding: '0 24px',
-                borderRadius: 12,
-                flex: 1,
-                maxWidth: 180
-              }}
-            >
-              {autoCaptureActive ? 'STOP AUTO' : 'START AUTO'}
-            </Button>
-          )}
-        </div>
-
-        {/* Camera Control */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center',
-          marginBottom: 16
-        }}>
-          <Button
-            type={isCameraActive ? "default" : "primary"}
-            onClick={isCameraActive ? stopCamera : startCamera}
-            size="large"
-            style={{
-              height: 48,
-              fontSize: 16,
-              padding: '0 32px',
-              borderRadius: 12,
-              width: '100%',
-              maxWidth: 300
-            }}
-          >
-            {isCameraActive ? 'STOP CAMERA' : 'START CAMERA'}
-          </Button>
-        </div>
-
-        {/* Stats */}
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          gap: 12 
-        }}>
-          <Tag 
-            color="blue"
-            style={{ 
-              fontSize: 14,
-              padding: '8px 16px',
-              borderRadius: 20
-            }}
-          >
-            Captures: {captureCount}
-          </Tag>
-          <Tag 
-            color={autoCaptureActive ? "green" : "orange"}
-            style={{ 
-              fontSize: 14,
-              padding: '8px 16px',
-              borderRadius: 20
-            }}
-          >
-            {autoCaptureActive ? 'Auto: ON' : 'Auto: OFF'}
-          </Tag>
-        </div>
-
-        {/* Error Display */}
-        {error && (
-          <div style={{ marginTop: 16 }}>
-            <Alert
-              message="Camera Error"
-              description={error}
-              type="error"
-              showIcon
-              style={{ marginBottom: 16 }}
-              action={
-                <Button
-                  type="primary"
-                  onClick={startCamera}
-                  size="small"
-                >
-                  RETRY
-                </Button>
-              }
-            />
+            <Text style={{ 
+              color: '#00ffaa', 
+              fontSize: 12, 
+              textAlign: 'center',
+              display: 'block',
+              marginTop: 4,
+              fontWeight: 'bold'
+            }}>
+              SCANNING...
+            </Text>
           </div>
         )}
       </div>
+
+      {/* Stats Footer - Minimal */}
+      <div style={{ 
+        padding: '8px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 6 
+        }}>
+          <div style={{ 
+            width: 8, 
+            height: 8, 
+            borderRadius: '50%',
+            backgroundColor: isCameraActive ? '#00ffaa' : '#ff4d4f'
+          }} />
+          <Text style={{ 
+            fontSize: 12, 
+            color: isCameraActive ? '#00ffaa' : '#ff4d4f',
+            fontWeight: 'bold'
+          }}>
+            {isCameraActive ? 'CAMERA ACTIVE' : 'CAMERA OFF'}
+          </Text>
+        </div>
+        
+        <div style={{ 
+          height: 16,
+          width: 1,
+          backgroundColor: 'rgba(0, 150, 255, 0.3)'
+        }} />
+        
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 6 
+        }}>
+          <div style={{ 
+            width: 8, 
+            height: 8, 
+            borderRadius: '50%',
+            backgroundColor: autoCaptureActive ? '#00ffaa' : '#ffaa00'
+          }} />
+          <Text style={{ 
+            fontSize: 12, 
+            color: autoCaptureActive ? '#00ffaa' : '#ffaa00',
+            fontWeight: 'bold'
+          }}>
+            AUTO-SCAN: ON
+          </Text>
+        </div>
+      </div>
+
+      {/* Error Display - Minimal */}
+      {error && (
+        <div style={{
+          position: 'absolute',
+          bottom: 60,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '90%',
+          maxWidth: 400,
+          zIndex: 100,
+          backgroundColor: 'rgba(255, 50, 50, 0.15)',
+          color: '#ff3333',
+          padding: '12px 16px',
+          borderRadius: 12,
+          border: '1px solid rgba(255, 50, 50, 0.5)',
+          textAlign: 'center',
+          backdropFilter: 'blur(10px)'
+        }}>
+          <Text style={{ 
+            fontSize: 14, 
+            fontWeight: 'bold',
+            color: '#ff3333'
+          }}>
+            {error}
+          </Text>
+        </div>
+      )}
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
