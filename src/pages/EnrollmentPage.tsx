@@ -796,17 +796,17 @@ const EnrollmentPage: React.FC = () => {
                   boxShadow: '0 0 30px rgba(0, 150, 255, 0.2)'
                 }}>
                   <FaceCamera
-                    mode="enrollment"
-                    staff={{
-                      id: staffData.staff_id || staffId,
-                      name: staffData.name,
-                      staff_id: staffData.staff_id || staffId,
-                      department: staffData.department
-                    }}
-                    onEnrollmentComplete={handleFaceCapture}
-                    autoCapture={true}
-                    captureInterval={3000}
-                  />
+  mode="enrollment"
+  staff={{
+    id: staffData.staff_id || staffId,
+    name: staffData.name,
+    staff_id: staffData.staff_id || staffId,
+    department: staffData.department
+  }}
+  onEnrollmentComplete={handleFaceCapture}
+  autoCapture={true}  // Make sure this is true
+  captureInterval={3000}  // Same as attendance
+/>
                 </div>
               )}
               
