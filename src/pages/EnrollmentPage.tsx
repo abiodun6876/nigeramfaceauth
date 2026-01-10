@@ -1,4 +1,4 @@
-// src/pages/EnrollmentPage.tsx - NIGERAM CUSTOMIZED VERSION
+// src/pages/EnrollmentPage.tsx - UPDATED WITH AUTO-START CAMERA
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -14,13 +14,15 @@ import {
   Col,
   Steps,
   Tag,
-  Spin
+  Spin,
+  Badge
 } from 'antd';
-import { Camera, User, Briefcase, CheckCircle, Users, Calendar } from 'lucide-react';
+import { Camera, User, Briefcase, CheckCircle, Users, ArrowLeft, Clock } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../utils/imageUtils';
 import faceRecognition from '../utils/faceRecognition';
+import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
@@ -34,6 +36,10 @@ const EnrollmentPage: React.FC = () => {
   const [enrollmentResult, setEnrollmentResult] = useState<any>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [staffId, setStaffId] = useState<string>('');
+  const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [captureCount, setCaptureCount] = useState(0);
+  const [lastCaptureResult, setLastCaptureResult] = useState<any>(null);
   
   // Nigeram specific departments
   const departments = [
@@ -45,7 +51,7 @@ const EnrollmentPage: React.FC = () => {
 
   // Generate staff ID
   const generateStaffId = () => {
-    const prefix = 'NIG'; // Nigeram prefix
+    const prefix = 'NIG';
     const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     const currentYear = new Date().getFullYear().toString().slice(-2);
     return `${prefix}${currentYear}${randomNum}`;
@@ -56,6 +62,17 @@ const EnrollmentPage: React.FC = () => {
     const newStaffId = generateStaffId();
     setStaffId(newStaffId);
     form.setFieldValue('staff_id', newStaffId);
+    
+    // Load face models
+    const loadModels = async () => {
+      try {
+        await faceRecognition.loadModels();
+        setFaceModelsLoaded(true);
+      } catch (error) {
+        console.log('Face models loading...');
+      }
+    };
+    loadModels();
   }, [form]);
 
   const handleNext = async () => {
@@ -64,7 +81,6 @@ const EnrollmentPage: React.FC = () => {
         await form.validateFields();
         const values = form.getFieldsValue();
         
-        // Ensure staff ID is set
         if (!values.staff_id?.trim()) {
           const newStaffId = generateStaffId();
           values.staff_id = newStaffId;
@@ -76,11 +92,15 @@ const EnrollmentPage: React.FC = () => {
         setStaffData(values);
         setCurrentStep(1);
       } else if (currentStep === 1) {
-        // Validate department form
         await departmentForm.validateFields();
         const departmentValues = await departmentForm.getFieldsValue();
         setStaffData((prev: any) => ({ ...prev, ...departmentValues }));
+        
+        // Auto-start camera when moving to step 2
         setCurrentStep(2);
+        setTimeout(() => {
+          setIsCameraActive(true);
+        }, 300);
       }
     } catch (error: any) {
       console.error('Error in handleNext:', error);
@@ -90,6 +110,9 @@ const EnrollmentPage: React.FC = () => {
   };
 
   const handleBack = () => {
+    if (currentStep === 2) {
+      setIsCameraActive(false);
+    }
     setCurrentStep(currentStep - 1);
   };
 
@@ -100,7 +123,6 @@ const EnrollmentPage: React.FC = () => {
     message.success('New staff ID generated');
   };
 
-  // Helper function to convert data URL to blob
   const dataURLtoBlob = (dataURL: string): Blob => {
     try {
       const arr = dataURL.split(',');
@@ -119,311 +141,234 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  // Enrollment handler
-  const handleEnrollmentComplete = async (result: any) => {
-    console.log('=== ENROLLMENT COMPLETE TRIGGERED ===');
-    console.log('Full result from FaceCamera:', result);
+  // Handle face capture from camera
+  const handleFaceCapture = async (result: any) => {
+    if (!result.success || !result.photoUrl || isProcessing) return;
+    
+    setIsProcessing(true);
+    setCaptureCount(prev => prev + 1);
     
     try {
-      if (!result.success || !result.photoData) {
-        console.error('Result missing success or photoData:', result);
-        message.error('Failed to capture image');
-        return;
-      }
+      console.log('=== FACE CAPTURE TRIGGERED ===');
+      console.log('Capture result:', result);
+      
+      // Set temporary success message
+      setLastCaptureResult({
+        success: true,
+        message: 'Face captured successfully! Processing...',
+        temporary: true
+      });
+      
+      // Process the enrollment
+      await processEnrollment(result);
+      
+    } catch (error: any) {
+      console.error('Face capture error:', error);
+      setLastCaptureResult({
+        success: false,
+        message: `Capture failed: ${error.message}`,
+        temporary: false
+      });
+      message.error(`Capture failed: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+      // Clear temporary message after 2 seconds
+      setTimeout(() => {
+        setLastCaptureResult(prev => prev?.temporary ? null : prev);
+      }, 2000);
+    }
+  };
 
+  // Process enrollment
+  const processEnrollment = async (result: any) => {
+    try {
       setLoading(true);
 
-      // Extract staff information
-     // Line 137 - FIXED VERSION:
-       const currentStaffId = result.staffId || result.staff_id || staffData.staff_id || staffId;
+      const currentStaffId = result.staffId || result.staff_id || staffData.staff_id || staffId;
       const staffName = result.staffName || staffData.name || 'Unknown Staff';
       const staffDepartment = result.department || staffData.department;
       const staffGender = result.gender || staffData.gender || 'male';
       
-      console.log('Extracted staff info:', {
-        staffId,
+      console.log('Processing enrollment for:', {
+        staffId: currentStaffId,
         staffName,
         staffDepartment,
         staffGender
       });
 
-      // Validate required fields
-      if (!staffId || !staffName || !staffDepartment) {
-        console.error('Missing required staff information:', { staffId, staffName, staffDepartment });
-        message.error('Missing staff information. Please complete all form steps.');
-        setLoading(false);
-        return;
+      if (!currentStaffId || !staffName || !staffDepartment) {
+        throw new Error('Missing staff information');
       }
 
       // Compress the image
-      const compressedImage = await compressImage(result.photoData.base64, 640, 0.8);
+      const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
       
-      // Generate a unique filename
+      // Generate filename
       const fileName = `enrollment_${Date.now()}_${staffName.replace(/\s+/g, '_')}.jpg`;
       
-      console.log('Processing enrollment for:', staffName, 'with ID:', staffId);
+      let photoUrl = '';
+      let photoData = compressedImage;
       
+      // Upload to Supabase Storage if possible
       try {
-        let photoUrl = '';
-        let photoData = compressedImage;
-        
-        // Try to upload to Supabase Storage
-        try {
-          console.log('Attempting to upload to Supabase Storage...');
-          const { error: storageError } = await supabase.storage
-            .from('staff-photos')
-            .upload(fileName, dataURLtoBlob(compressedImage), {
-              contentType: 'image/jpeg',
-              upsert: true
-            });
-          
-          if (!storageError) {
-            // Get public URL
-            const { data: publicUrlData } = supabase.storage
-              .from('staff-photos')
-              .getPublicUrl(fileName);
-            
-            photoUrl = publicUrlData.publicUrl;
-            console.log('✅ Photo uploaded to storage:', photoUrl);
-          } else {
-            console.warn('❌ Storage upload failed:', storageError);
-          }
-        } catch (storageError) {
-          console.warn('❌ Storage bucket may not exist:', storageError);
-        }
-        
-        // Get current date for employment
-        const currentDate = new Date();
-        
-        // Extract face embedding
-        console.log('=== Extracting face embedding ===');
-        let embeddingArray = null;
-        let embeddingError = null;
-
-        try {
-          const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
-          
-          if (descriptor) {
-            embeddingArray = Array.from(descriptor);
-            console.log('✅ Face embedding extracted, length:', embeddingArray.length);
-            
-            // Save to local storage
-            faceRecognition.saveEmbeddingToLocal(staffId, descriptor);
-          } else {
-            console.log('⚠️ No face detected - embedding not extracted');
-            embeddingError = new Error('No face detected in image');
-          }
-        } catch (err: any) {
-          console.error('❌ Could not extract face embedding:', err);
-          embeddingError = err;
-        }
-
-        // If embedding failed, save as pending
-        if (!embeddingArray) {
-          throw new Error(`Face embedding extraction failed: ${embeddingError?.message || 'No face detected'}.`);
-        }
-
-        // Save staff with embedding
-        console.log('=== Saving staff with embedding ===');
-
-        // Prepare staff data WITH embedding
-        const staffRecord = {
-           staff_id: currentStaffId,  // Changed here
-          name: staffName,
-          gender: staffGender,
-          department: staffDepartment,
-          employment_date: currentDate.toISOString().split('T')[0],
-          employment_status: 'active',
-          enrollment_date: currentDate.toISOString().split('T')[0],
-          photo_url: photoUrl || null,
-          photo_data: photoData.replace(/^data:image\/\w+;base64,/, ''),
-          face_embedding: embeddingArray,
-          face_enrolled_at: currentDate.toISOString(),
-          last_updated: currentDate.toISOString(),
-          created_at: currentDate.toISOString()
-        };
-        
-        console.log('📊 Staff data for database (with embedding):', {
-          ...staffRecord,
-          face_embedding_length: staffRecord.face_embedding?.length,
-        });
-        
-        // Check if staff already exists
-        const { data: existingStaff, error: checkError } = await supabase
-          .from('staff')
-          .select('staff_id, id')
-          .eq('staff_id', staffId)
-          .maybeSingle();
-        
-        let dbResult;
-        
-        if (checkError && checkError.code !== 'PGRST116') {
-          console.error('Error checking staff existence:', checkError);
-          throw checkError;
-        }
-        
-        if (!existingStaff) {
-          // Staff doesn't exist, INSERT with embedding
-          console.log('Inserting new staff with embedding...');
-          const { data: insertData, error: insertError } = await supabase
-            .from('staff')
-            .insert([staffRecord])
-            .select();
-          
-          if (insertError) {
-            console.error('Insert error:', insertError);
-            throw insertError;
-          }
-          dbResult = insertData;
-          console.log('✅ New staff inserted with embedding:', dbResult);
-        } else {
-          // Staff exists, UPDATE with all fields including embedding
-          console.log('Updating existing staff with embedding...');
-          const { data: updateData, error: updateError } = await supabase
-            .from('staff')
-            .update({
-              ...staffRecord,
-              id: existingStaff.id
-            })
-            .eq('staff_id', staffId)
-            .select();
-          
-          if (updateError) {
-            console.error('Update error:', updateError);
-            throw updateError;
-          }
-          dbResult = updateData;
-          console.log('✅ Staff updated with embedding:', dbResult);
-        }
-        
-        // Store in staff_photos table if it exists
-        try {
-          const { error: tableCheckError } = await supabase
-            .from('staff_photos')
-            .select('count')
-            .limit(1);
-          
-          if (!tableCheckError) {
-            console.log('Saving to staff_photos table...');
-            const { data: photoResult, error: photoError } = await supabase
-              .from('staff_photos')
-              .upsert([{
-                staff_id: staffId,
-                photo_url: photoUrl,
-                photo_data: photoData.replace(/^data:image\/\w+;base64,/, ''),
-                is_primary: true,
-                embedding_extracted: true,
-                embedding_length: embeddingArray?.length
-              }], {
-                onConflict: 'staff_id,is_primary'
-              })
-              .select();
-            
-            if (photoError) {
-              console.error('⚠️ Photo metadata save warning:', photoError);
-            } else {
-              console.log('✅ Photo saved to staff_photos:', photoResult);
-            }
-          } else {
-            console.log('⚠️ staff_photos table does not exist or error:', tableCheckError);
-          }
-        } catch (photoError) {
-          console.warn('⚠️ Could not save to staff_photos:', photoError);
-        }
-
-        // Save to local storage as backup
-        try {
-          const key = `face_image_${staffId}`;
-          localStorage.setItem(key, photoData);
-          console.log('✅ Image saved to localStorage:', key);
-        } catch (localError) {
-          console.warn('⚠️ Local storage save failed:', localError);
-        }
-        
-        // Verify the enrollment
-        console.log('=== Verifying enrollment ===');
-        
-        const { data: verifyData, error: verifyError } = await supabase
-          .from('staff')
-          .select('staff_id, name, face_embedding')
-          .eq('staff_id', staffId)
-          .single();
-        
-        if (verifyError) {
-          console.error('Verification error:', verifyError);
-          throw new Error(`Enrollment verification failed: ${verifyError.message}`);
-        }
-        
-        console.log('✅ Enrollment verified:', {
-          staffId: verifyData.staff_id,
-          name: verifyData.name,
-          embeddingSaved: verifyData.face_embedding !== null,
-        });
-        
-        // Get department color for display
-        const deptInfo = departments.find(d => d.value === staffDepartment);
-        
-        // Set enrollment result
-        setEnrollmentResult({
-          success: true,
-          message: 'Staff enrollment completed successfully!',
-          staff: {
-            name: staffName,
-            staff_id: staffId,
-          },
-          department: staffDepartment,
-          departmentColor: deptInfo?.color,
-          faceCaptured: true,
-          localStorageSaved: true,
-          photoUrl: photoUrl || photoData,
-          databaseSaved: true,
-          faceEmbeddingSaved: true,
-          embeddingLength: embeddingArray.length,
-          verification: {
-            embeddingPresent: verifyData.face_embedding !== null,
-          }
-        });
-        
-        setEnrollmentComplete(true);
-        message.success(`Enrollment complete for ${staffName}!`);
-        
-      } catch (error: any) {
-        console.error('❌ Upload/processing error:', error);
-        
-        // Fallback: Save as pending if embedding fails
-        console.log('Attempting fallback save as pending...');
-        const fallbackData = {
-          staff_id: staffId,
-          name: staffName,
-          department: staffDepartment,
-          gender: staffGender,
-          employment_status: 'pending',
-          enrollment_date: new Date().toISOString().split('T')[0],
-          last_updated: new Date().toISOString(),
-          face_embedding: null
-        };
-        
-        const { error: fallbackError } = await supabase
-          .from('staff')
-          .upsert([fallbackData], {
-            onConflict: 'staff_id'
+        const { error: storageError } = await supabase.storage
+          .from('staff-photos')
+          .upload(fileName, dataURLtoBlob(compressedImage), {
+            contentType: 'image/jpeg',
+            upsert: true
           });
         
-        if (fallbackError) {
-          console.error('❌ Fallback save also failed:', fallbackError);
-          throw fallbackError;
+        if (!storageError) {
+          const { data: publicUrlData } = supabase.storage
+            .from('staff-photos')
+            .getPublicUrl(fileName);
+          
+          photoUrl = publicUrlData.publicUrl;
+          console.log('✅ Photo uploaded to storage:', photoUrl);
         }
+      } catch (storageError) {
+        console.warn('Storage upload skipped:', storageError);
+      }
+      
+      const currentDate = new Date();
+      
+      // Extract face embedding
+      console.log('Extracting face embedding...');
+      let embeddingArray = null;
+      let embeddingError = null;
+
+      try {
+        const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
         
-        console.log('✅ Fallback save successful (status: pending)');
+        if (descriptor) {
+          embeddingArray = Array.from(descriptor);
+          console.log('✅ Face embedding extracted, length:', embeddingArray.length);
+          
+          // Save to local storage
+          faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+        } else {
+          embeddingError = new Error('No face detected in image');
+        }
+      } catch (err: any) {
+        console.error('❌ Could not extract face embedding:', err);
+        embeddingError = err;
+      }
+
+      // If embedding failed, save as pending
+      if (!embeddingArray) {
+        throw new Error(`Face embedding extraction failed: ${embeddingError?.message || 'No face detected'}.`);
+      }
+
+      // Prepare staff data
+      const staffRecord = {
+        staff_id: currentStaffId,
+        name: staffName,
+        gender: staffGender,
+        department: staffDepartment,
+        employment_date: currentDate.toISOString().split('T')[0],
+        employment_status: 'active',
+        enrollment_status: 'enrolled',
+        photo_url: photoUrl || null,
+        face_embedding: embeddingArray,
+        face_enrolled_at: currentDate.toISOString(),
+        is_active: true,
+        created_at: currentDate.toISOString(),
+        updated_at: currentDate.toISOString()
+      };
+      
+      // Save to database
+      const { data: existingStaff } = await supabase
+        .from('staff')
+        .select('staff_id, id')
+        .eq('staff_id', currentStaffId)
+        .maybeSingle();
+      
+      let dbResult;
+      
+      if (!existingStaff) {
+        // Insert new staff
+        const { data: insertData, error: insertError } = await supabase
+          .from('staff')
+          .insert([staffRecord])
+          .select();
+        
+        if (insertError) throw insertError;
+        dbResult = insertData;
+      } else {
+        // Update existing staff
+        const { data: updateData, error: updateError } = await supabase
+          .from('staff')
+          .update(staffRecord)
+          .eq('staff_id', currentStaffId)
+          .select();
+        
+        if (updateError) throw updateError;
+        dbResult = updateData;
+      }
+      
+      // Save to local storage as backup
+      try {
+        const key = `face_image_${currentStaffId}`;
+        localStorage.setItem(key, photoData);
+        console.log('✅ Image saved to localStorage');
+      } catch (localError) {
+        console.warn('⚠️ Local storage save failed:', localError);
+      }
+      
+      // Get department color
+      const deptInfo = departments.find(d => d.value === staffDepartment);
+      
+      // Set enrollment result
+      setEnrollmentResult({
+        success: true,
+        message: 'Staff enrollment completed successfully!',
+        staff: {
+          name: staffName,
+          staff_id: currentStaffId,
+        },
+        department: staffDepartment,
+        departmentColor: deptInfo?.color,
+        faceCaptured: true,
+        localStorageSaved: true,
+        photoUrl: photoUrl || photoData,
+        databaseSaved: true,
+        faceEmbeddingSaved: true,
+        embeddingLength: embeddingArray.length
+      });
+      
+      setEnrollmentComplete(true);
+      setIsCameraActive(false);
+      message.success(`Enrollment complete for ${staffName}!`);
+      
+    } catch (error: any) {
+      console.error('❌ Enrollment error:', error);
+      
+      // Fallback save
+      try {
+        const fallbackData = {
+          staff_id: staffData.staff_id || staffId,
+          name: staffData.name,
+          department: staffData.department,
+          gender: staffData.gender || 'male',
+          employment_status: 'pending',
+          enrollment_status: 'pending',
+          is_active: true
+        };
+        
+        await supabase
+          .from('staff')
+          .upsert([fallbackData], { onConflict: 'staff_id' });
+          
+        console.log('✅ Fallback save successful');
         
         setEnrollmentResult({
           success: false,
           message: 'Enrollment failed: Could not extract face embedding. Staff saved as "pending".',
           staff: {
-            name: staffName,
-            staff_id: staffId,
+            name: staffData.name,
+            staff_id: staffData.staff_id || staffId,
           },
-          department: staffDepartment,
+          department: staffData.department,
           faceCaptured: true,
           databaseSaved: true,
           faceEmbeddingSaved: false,
@@ -431,18 +376,13 @@ const EnrollmentPage: React.FC = () => {
         });
         
         setEnrollmentComplete(true);
-        message.warning(`Enrollment incomplete for ${staffName}. Face embedding extraction failed. Staff saved as "pending".`);
+        setIsCameraActive(false);
+        message.warning('Enrollment incomplete. Face embedding extraction failed.');
+        
+      } catch (fallbackError) {
+        console.error('❌ Fallback save failed:', fallbackError);
+        throw error;
       }
-      
-    } catch (error: any) {
-      console.error('❌ Critical enrollment error:', error);
-      setEnrollmentResult({
-        success: false,
-        message: `Failed to complete enrollment: ${error.message}`,
-        error: error
-      });
-      setEnrollmentComplete(true);
-      message.error(`Failed to complete enrollment: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -474,33 +414,19 @@ const EnrollmentPage: React.FC = () => {
                   label="Full Name *"
                   name="name"
                   rules={[
-                    { 
-                      required: true, 
-                      message: 'Please enter staff name',
-                      whitespace: true
-                    },
-                    { 
-                      min: 3, 
-                      message: 'Name must be at least 3 characters' 
-                    }
+                    { required: true, message: 'Please enter staff name', whitespace: true },
+                    { min: 3, message: 'Name must be at least 3 characters' }
                   ]}
                   validateTrigger={['onChange', 'onBlur']}
                 >
-                  <Input 
-                    placeholder="Enter staff full name" 
-                    size="large"
-                  />
+                  <Input placeholder="Enter staff full name" size="large" />
                 </Form.Item>
               </Col>
             </Row>
 
             <Row gutter={[16, 16]}>
               <Col span={24}>
-                <Form.Item
-                  label="Staff ID *"
-                  name="staff_id"
-                  tooltip="This will be used for attendance tracking"
-                >
+                <Form.Item label="Staff ID *" name="staff_id">
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <Input
                       value={staffId}
@@ -514,11 +440,7 @@ const EnrollmentPage: React.FC = () => {
                       }}
                       prefix={<Users size={16} />}
                     />
-                    <Button
-                      type="default"
-                      size="large"
-                      onClick={handleRegenerateStaffId}
-                    >
+                    <Button type="default" size="large" onClick={handleRegenerateStaffId}>
                       Regenerate
                     </Button>
                   </div>
@@ -556,17 +478,13 @@ const EnrollmentPage: React.FC = () => {
             style={{ marginBottom: 20 }}
           />
           
-          <Form
-            form={departmentForm}
-            layout="vertical"
-          >
+          <Form form={departmentForm} layout="vertical">
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <Form.Item 
                   label="Department *" 
                   name="department"
                   rules={[{ required: true, message: 'Please select department' }]}
-                  help="Required for attendance tracking and reporting"
                 >
                   <Select 
                     placeholder="Select department" 
@@ -653,17 +571,7 @@ const EnrollmentPage: React.FC = () => {
                 </p>
                 <p><strong>Face Embedding:</strong> 
                   <Tag color={enrollmentResult?.faceEmbeddingSaved ? "green" : "orange"} style={{ marginLeft: 8 }}>
-                    {enrollmentResult?.faceEmbeddingSaved ? `Extracted ✓ (${enrollmentResult?.embeddingLength} values)` : 'Not Extracted'}
-                  </Tag>
-                </p>
-                <p><strong>Verification:</strong> 
-                  <Tag color={enrollmentResult?.verification?.embeddingPresent ? "green" : "red"} style={{ marginLeft: 8 }}>
-                    {enrollmentResult?.verification?.embeddingPresent ? 'Verified ✓' : 'Not Verified'}
-                  </Tag>
-                </p>
-                <p><strong>Local Storage:</strong> 
-                  <Tag color={enrollmentResult?.localStorageSaved ? "green" : "gray"} style={{ marginLeft: 8 }}>
-                    {enrollmentResult?.localStorageSaved ? 'Backup Saved' : 'No Backup'}
+                    {enrollmentResult?.faceEmbeddingSaved ? `Extracted ✓` : 'Not Extracted'}
                   </Tag>
                 </p>
                 <p><strong>Enrollment Date:</strong> {new Date().toLocaleDateString()}</p>
@@ -719,7 +627,6 @@ const EnrollmentPage: React.FC = () => {
               type="primary"
               size="large"
               onClick={() => {
-                // Generate new staff ID for next staff
                 const newStaffId = generateStaffId();
                 setStaffId(newStaffId);
                 form.setFieldValue('staff_id', newStaffId);
@@ -731,8 +638,8 @@ const EnrollmentPage: React.FC = () => {
                 departmentForm.resetFields();
                 setStaffData({});
                 setIsCameraActive(false);
+                setCaptureCount(0);
                 
-                // Reset to initial values
                 form.setFieldsValue({
                   gender: 'male',
                   staff_id: newStaffId
@@ -745,9 +652,9 @@ const EnrollmentPage: React.FC = () => {
               <>
                 <Button 
                   size="large"
-                  onClick={() => window.location.href = '/staff'}
+                  onClick={() => window.location.href = '/'}
                 >
-                  View All Staff
+                  Back to Home
                 </Button>
                 <Button 
                   size="large"
@@ -761,57 +668,101 @@ const EnrollmentPage: React.FC = () => {
           </Space>
         </div>
       ) : (
-        <div style={{ textAlign: 'center' }}>
-          <Alert
-            message="Face Enrollment"
-            description="Capture facial data for biometric authentication. Ensure good lighting and face the camera directly."
-            type="info"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-          
-          {staffData.name && (
-            <Card style={{ marginBottom: 20, maxWidth: 600, margin: '0 auto 20px' }}>
-              <Row gutter={[16, 16]}>
-                <Col span={8}>
-                  <Text strong>Staff: </Text>
-                  <br />
-                  <Text>{staffData.name}</Text>
-                </Col>
-                <Col span={8}>
-                  <Text strong>Staff ID: </Text>
-                  <br />
+        <div style={{ 
+          height: 'calc(100vh - 250px)',
+          display: 'flex',
+          flexDirection: 'column'
+        }}>
+          {/* Header */}
+          <div style={{ 
+            padding: '16px',
+            backgroundColor: '#0a1a35',
+            color: '#ffffff',
+            borderRadius: 12,
+            marginBottom: 16
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <Text strong style={{ color: '#00aaff', fontSize: 16 }}>
+                  {staffData.name}
+                </Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <Tag color="blue">{staffId}</Tag>
-                </Col>
-                <Col span={8}>
-                  <Text strong>Status: </Text>
-                  <br />
-                  <Tag color="orange">Pending Face Enrollment</Tag>
-                </Col>
-              </Row>
-              {staffData.department && (
-                <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                  <Col span={24}>
-                    <Text strong>Department: </Text>
-                    <br />
+                  {staffData.department && (
                     <Tag 
                       color="blue" 
                       style={{ 
-                        marginTop: '8px',
                         backgroundColor: departments.find(d => d.value === staffData.department)?.color || '#1890ff',
                         color: 'white'
                       }}
                     >
                       {staffData.department?.toUpperCase()}
                     </Tag>
-                  </Col>
-                </Row>
-              )}
-            </Card>
-          )}
+                  )}
+                </div>
+              </div>
+              
+              <Button
+                icon={<ArrowLeft size={16} />}
+                onClick={handleBack}
+                style={{
+                  backgroundColor: 'rgba(0, 150, 255, 0.2)',
+                  border: '1px solid rgba(0, 150, 255, 0.5)',
+                  color: '#00aaff'
+                }}
+              >
+                Back
+              </Button>
+            </div>
+          </div>
           
-          <div style={{ maxWidth: 640, margin: '0 auto' }}>
-            {isCameraActive ? (
+          {/* Camera Section */}
+          <div style={{ 
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: '#0a1a35',
+            borderRadius: 12,
+            overflow: 'hidden'
+          }}>
+            {/* Status Bar */}
+            <div style={{ 
+              padding: '12px 16px',
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ 
+                  width: 8, 
+                  height: 8, 
+                  borderRadius: '50%',
+                  backgroundColor: faceModelsLoaded ? '#00ffaa' : '#ffaa00',
+                  boxShadow: faceModelsLoaded ? '0 0 8px #00ffaa' : '0 0 8px #ffaa00'
+                }} />
+                <Text style={{ fontSize: 12, color: '#aaccff' }}>
+                  {faceModelsLoaded ? 'READY' : 'LOADING'}
+                </Text>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Badge 
+                  count={captureCount} 
+                  style={{ 
+                    backgroundColor: '#00aaff',
+                    color: '#ffffff'
+                  }} 
+                />
+                <Text style={{ fontSize: 12, color: '#aaccff' }}>
+                  <Clock size={10} style={{ marginRight: 4 }} />
+                  {dayjs().format('HH:mm')}
+                </Text>
+              </div>
+            </div>
+            
+            {/* Camera Feed - Auto-start */}
+            <div style={{ flex: 1, position: 'relative' }}>
               <FaceCamera
                 mode="enrollment"
                 staff={{
@@ -820,42 +771,91 @@ const EnrollmentPage: React.FC = () => {
                   staff_id: staffData.staff_id || staffId,
                   department: staffData.department
                 }}
-                onEnrollmentComplete={handleEnrollmentComplete}
+                onEnrollmentComplete={handleFaceCapture}
+                autoCapture={true}
+                captureInterval={2000}
               />
-            ) : (
-              <Card>
-                <Camera size={48} style={{ marginBottom: 20, color: '#1890ff' }} />
-                <Title level={4}>Ready for Face Capture</Title>
-                <Text type="secondary" style={{ display: 'block', marginBottom: 20 }}>
-                  Ensure good lighting and face the camera directly. Click below to start.
-                </Text>
-                <Button
-                  type="primary"
-                  size="large"
-                  icon={<Camera size={20} />}
-                  onClick={() => setIsCameraActive(true)}
-                  loading={loading}
-                  style={{ marginBottom: 10 }}
-                >
-                  Start Face Enrollment
-                </Button>
-                
-                <div style={{ marginTop: 20 }}>
-                  <Alert
-                    type="warning"
-                    message="Important for Attendance"
-                    description="Face data and embedding are required for biometric attendance marking. Please ensure good lighting and a clear face view."
-                    style={{ marginBottom: 20 }}
-                  />
-                  
-                  <div style={{ marginTop: 20 }}>
-                    <Button onClick={handleBack}>
-                      Back to Previous Step
-                    </Button>
+              
+              {/* Processing Overlay */}
+              {isProcessing && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 100
+                }}>
+                  <Spin size="large" tip="Processing face data..." />
+                </div>
+              )}
+              
+              {/* Last Capture Result */}
+              {lastCaptureResult && !lastCaptureResult.temporary && (
+                <div style={{
+                  position: 'absolute',
+                  bottom: 20,
+                  left: 0,
+                  right: 0,
+                  textAlign: 'center',
+                  zIndex: 100
+                }}>
+                  <div style={{
+                    display: 'inline-block',
+                    backgroundColor: lastCaptureResult.success 
+                      ? 'rgba(0, 255, 150, 0.15)' 
+                      : 'rgba(255, 50, 50, 0.15)',
+                    color: lastCaptureResult.success ? '#00ffaa' : '#ff3333',
+                    padding: '12px 24px',
+                    borderRadius: 12,
+                    border: lastCaptureResult.success 
+                      ? '1px solid rgba(0, 255, 150, 0.5)' 
+                      : '1px solid rgba(255, 50, 50, 0.5)',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    backdropFilter: 'blur(10px)'
+                  }}>
+                    {lastCaptureResult.success ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <CheckCircle size={18} />
+                        <span>{lastCaptureResult.message}</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <circle cx="12" cy="12" r="10"/>
+                          <line x1="15" y1="9" x2="9" y2="15"/>
+                          <line x1="9" y1="9" x2="15" y2="15"/>
+                        </svg>
+                        <span>{lastCaptureResult.message}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </Card>
-            )}
+              )}
+            </div>
+            
+            {/* Instructions */}
+            <div style={{ 
+              padding: '16px',
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderTop: '1px solid rgba(0, 150, 255, 0.2)'
+            }}>
+              <Alert
+                message="Instructions"
+                description="Position face in the frame. The camera will automatically capture and process facial data. Ensure good lighting and face the camera directly."
+                type="info"
+                showIcon
+                style={{ 
+                  backgroundColor: 'transparent',
+                  border: '1px solid rgba(0, 150, 255, 0.3)'
+                }}
+              />
+            </div>
           </div>
         </div>
       ),
@@ -863,16 +863,29 @@ const EnrollmentPage: React.FC = () => {
   ];
 
   return (
-    <div style={{ padding: '20px' }}>
-      <Title level={2}>Staff Face Enrollment</Title>
-      <Text type="secondary">
+    <div style={{ 
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      backgroundColor: '#f0f2f5',
+      padding: '16px'
+    }}>
+      <Title level={2} style={{ marginBottom: 8 }}>
+        Staff Face Enrollment
+      </Title>
+      <Text type="secondary" style={{ marginBottom: 16 }}>
         Nigeram Ventures - Biometric Staff Enrollment System
       </Text>
 
-      <Card style={{ marginTop: 20 }}>
+      <Card style={{ 
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden'
+      }}>
         <Steps 
           current={currentStep} 
-          style={{ marginBottom: 40 }}
+          style={{ marginBottom: 24 }}
           items={stepItems.map((item, index) => ({
             key: index,
             title: window.innerWidth < 768 ? '' : item.title,
@@ -880,7 +893,7 @@ const EnrollmentPage: React.FC = () => {
           }))}
         />
 
-        <div style={{ minHeight: 400 }}>
+        <div style={{ flex: 1, minHeight: 0 }}>
           {stepItems[currentStep].content}
         </div>
 
@@ -904,6 +917,17 @@ const EnrollmentPage: React.FC = () => {
           </div>
         )}
       </Card>
+      
+      {/* Add CSS animations */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% { box-shadow: 0 0 20px rgba(0, 255, 150, 0.2); }
+            50% { box-shadow: 0 0 30px rgba(0, 255, 150, 0.4); }
+            100% { box-shadow: 0 0 20px rgba(0, 255, 150, 0.2); }
+          }
+        `}
+      </style>
     </div>
   );
 };
