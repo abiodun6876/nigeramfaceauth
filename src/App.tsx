@@ -113,7 +113,7 @@ const HomeCards = () => {
         marginBottom: 40 
       }}>
         <Title level={2} style={{ marginBottom: 8 }}>
-          Face Attendance System
+          Nigeram Face Attendance System
         </Title>
         <Text type="secondary">
           Select an option to begin
