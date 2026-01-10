@@ -96,7 +96,7 @@ const PWAInstallPrompt = () => {
           </div>
           
           <Title level={4} style={{ margin: 0 }}>
-            Install ABUAD Face
+            Install Nigeram Staff Face Auth
           </Title>
           
           <Text type="secondary">

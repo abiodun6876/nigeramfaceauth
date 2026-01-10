@@ -206,83 +206,78 @@ class FaceRecognition {
   
   // ========== ATTENDANCE MATCHING METHODS ==========
   
-  async matchFaceForAttendance(
-    capturedImage: string,
-    maxMatches: number = 5
-  ): Promise<Array<{studentId: string, name: string, matric_number: string, confidence: number}>> {
-    try {
-      // 1. Extract face from captured image
-      const capturedDescriptor = await this.extractFaceDescriptor(capturedImage);
-      
-      if (!capturedDescriptor) {
-        console.log('No face detected in captured image');
-        return [];
-      }
-      
-      // 2. Get all enrolled students WITH face embeddings
-      const { data: students, error } = await supabase
-        .from('students')
-        .select('student_id, name, matric_number, face_embedding')
-        .eq('enrollment_status', 'enrolled')
-        .not('face_embedding', 'is', null)
-        .limit(50);
-      
-      if (error) {
-        console.error('Database error:', error);
-        return [];
-      }
-      
-      if (!students || students.length === 0) {
-        console.log('No students with face embeddings found');
-        return [];
-      }
-      
-      const matches = [];
-      const MATCH_THRESHOLD = 0.65;
-      
-      // 3. Compare with each student's embedding
-      for (const student of students) {
-        try {
-          if (!student.face_embedding || student.face_embedding.length === 0) {
-            continue;
-          }
-          
-          // Convert stored array back to Float32Array
-          const storedDescriptor = new Float32Array(student.face_embedding);
-          
-          // Compare faces
-          const similarity = this.compareFaces(capturedDescriptor, storedDescriptor);
-          
-          console.log(`Comparing with ${student.name}: ${similarity.toFixed(3)}`);
-          
-          if (similarity > MATCH_THRESHOLD) {
-            matches.push({
-              studentId: student.student_id,
-              name: student.name,
-              matric_number: student.matric_number,
-              confidence: similarity
-            });
-          }
-        } catch (error) {
-          console.error(`Error processing student ${student.student_id}:`, error);
-          continue;
-        }
-      }
-      
-      // 4. Sort by confidence and return top matches
-      const sortedMatches = matches
-        .sort((a, b) => b.confidence - a.confidence)
-        .slice(0, maxMatches);
-      
-      console.log('Found matches:', sortedMatches.length);
-      return sortedMatches;
-      
-    } catch (error) {
-      console.error('Error in face matching:', error);
-      return [];
-    }
-  }
   
+  // Update your matchFaceForAttendance method to use the existing compareFaces method:
+
+// ========== ATTENDANCE MATCHING METHODS ==========
+async matchFaceForAttendance(imageData: string) {
+  try {
+    const descriptor = await this.extractFaceDescriptor(imageData);
+    if (!descriptor) return [];
+    
+    // Get all staff embeddings from database
+    const { data: staffList, error } = await supabase
+      .from('staff')
+      .select('staff_id, name, face_embedding')
+      .eq('employment_status', 'active')
+      .not('face_embedding', 'is', null);
+    
+    if (error || !staffList) return [];
+    
+    const matches: Array<{
+      staffId: string;
+      name: string;
+      confidence: number;
+    }> = [];
+    
+    for (const staff of staffList) {
+      if (!staff.face_embedding) continue;
+      
+      // Use the existing compareFaces method instead of calculateDistance
+      const confidence = this.compareFaces(
+        descriptor,
+        new Float32Array(staff.face_embedding)
+      );
+      
+      if (confidence > 0.6) { // Match threshold
+        matches.push({
+          staffId: staff.staff_id,
+          name: staff.name,
+          confidence
+        });
+      }
+    }
+    
+    // Sort by confidence (highest first)
+    return matches.sort((a, b) => b.confidence - a.confidence);
+  } catch (error) {
+    console.error('Error matching face:', error);
+    return [];
+  }
+}
+  
+// Add this method to your FaceRecognition class, right after the calculateSimilarity method:
+
+private async calculateDistance(descriptor1: Float32Array, descriptor2: Float32Array): Promise<number> {
+  try {
+    // Ensure both descriptors have the same length
+    if (descriptor1.length !== descriptor2.length) {
+      console.error('Descriptor length mismatch:', descriptor1.length, descriptor2.length);
+      return 1.0; // Maximum distance
+    }
+    
+    let sum = 0;
+    for (let i = 0; i < descriptor1.length; i++) {
+      const diff = descriptor1[i] - descriptor2[i];
+      sum += diff * diff;
+    }
+    
+    return Math.sqrt(sum);
+  } catch (error) {
+    console.error('Error calculating distance:', error);
+    return 1.0; // Return maximum distance on error
+  }
+}
   // ========== DATABASE METHODS ==========
   
   // Update face embedding in database

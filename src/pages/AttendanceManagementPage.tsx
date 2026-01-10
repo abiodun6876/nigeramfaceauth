@@ -1,4 +1,4 @@
-// src/pages/AttendanceManagementPage.tsx
+// src/pages/AttendanceManagementPage.tsx - NIGERAM STAFF VERSION
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -15,7 +15,6 @@ import {
   Statistic,
   Alert,
   message,
-  Form,
   Modal,
   Descriptions,
   Avatar,
@@ -29,73 +28,67 @@ import {
   EyeOutlined,
   CalendarOutlined,
   UserOutlined,
-  BookOutlined,
   ClockCircleOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  ReloadOutlined
+  ReloadOutlined,
+  TeamOutlined,
+  ApartmentOutlined 
 } from '@ant-design/icons';
 import { supabase } from '../lib/supabase';
-// Remove the wrong import and use this instead:
-import { Grid } from 'antd';
-const { useBreakpoint } = Grid;
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
-interface AttendanceRecord {
+interface StaffAttendanceRecord {
   id: number;
-  student_id: string;
-  student_name: string;
-  matric_number: string;
-  course_code: string;
-  course_title: string;
-  level: number;
+  staff_id: string;
+  staff_name: string;
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';
   attendance_date: string;
   check_in_time: string;
-  status: 'present' | 'absent' | 'late';
-  verification_method: 'face_recognition' | 'manual' | 'qr_code';
+  status: 'present' | 'absent' | 'late' | 'early_departure';
+  verification_method: 'face_recognition' | 'manual' | 'card_swipe';
   confidence_score: number | null;
-  score: string;
+  total_hours?: number;
+  overtime_minutes?: number;
+  location?: string;
   created_at: string;
   updated_at: string;
 }
 
 const AttendanceManagementPage: React.FC = () => {
-  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
-  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
+  const [attendanceData, setAttendanceData] = useState<StaffAttendanceRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<StaffAttendanceRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [courses, setCourses] = useState<string[]>([]);
-  const [levels, setLevels] = useState<number[]>([]);
+  const [departments] = useState<string[]>(['studio', 'logistics', 'bakery', 'spa']);
   const [stats, setStats] = useState({
     total: 0,
     present: 0,
     absent: 0,
-    faceVerified: 0,
-    manual: 0
+    late: 0,
+    faceVerified: 0
   });
-  const [selectedRecord, setSelectedRecord] = useState<AttendanceRecord | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<StaffAttendanceRecord | null>(null);
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [filters, setFilters] = useState({
     search: '',
-    course: '',
-    level: '',
+    department: '',
     status: '',
     verification: '',
     dateRange: null as [dayjs.Dayjs, dayjs.Dayjs] | null
   });
 
-  const screens = useBreakpoint();
-  const isMobile = !screens.md;
+  const isMobile = window.innerWidth < 768;
 
-  // Fetch attendance data
+  // Fetch attendance data for staff
   const fetchAttendanceData = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('student_attendance')
+        .from('staff_attendance')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -106,15 +99,6 @@ const AttendanceManagementPage: React.FC = () => {
       if (data) {
         setAttendanceData(data);
         setFilteredData(data);
-        
-        // Extract unique courses and levels
-        const uniqueCourses = Array.from(new Set(data.map((record: any) => record.course_code)));
-        const uniqueLevels = Array.from(new Set(data.map((record: any) => record.level))).sort();
-        
-        setCourses(uniqueCourses as string[]);
-        setLevels(uniqueLevels as number[]);
-        
-        // Calculate statistics
         calculateStats(data);
       }
     } catch (error: any) {
@@ -126,18 +110,18 @@ const AttendanceManagementPage: React.FC = () => {
   };
 
   // Calculate statistics
-  const calculateStats = (data: AttendanceRecord[]) => {
+  const calculateStats = (data: StaffAttendanceRecord[]) => {
     const present = data.filter(record => record.status === 'present').length;
     const absent = data.filter(record => record.status === 'absent').length;
+    const late = data.filter(record => record.status === 'late').length;
     const faceVerified = data.filter(record => record.verification_method === 'face_recognition').length;
-    const manual = data.filter(record => record.verification_method === 'manual').length;
     
     setStats({
       total: data.length,
       present,
       absent,
-      faceVerified,
-      manual
+      late,
+      faceVerified
     });
   };
 
@@ -149,21 +133,15 @@ const AttendanceManagementPage: React.FC = () => {
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter(record =>
-        record.student_name.toLowerCase().includes(searchLower) ||
-        record.matric_number.toLowerCase().includes(searchLower) ||
-        record.course_code.toLowerCase().includes(searchLower) ||
-        record.course_title.toLowerCase().includes(searchLower)
+        record.staff_name.toLowerCase().includes(searchLower) ||
+        record.staff_id.toLowerCase().includes(searchLower) ||
+        record.department.toLowerCase().includes(searchLower)
       );
     }
 
-    // Course filter
-    if (filters.course) {
-      filtered = filtered.filter(record => record.course_code === filters.course);
-    }
-
-    // Level filter
-    if (filters.level) {
-      filtered = filtered.filter(record => record.level === parseInt(filters.level));
+    // Department filter
+    if (filters.department) {
+      filtered = filtered.filter(record => record.department === filters.department);
     }
 
     // Status filter
@@ -194,8 +172,7 @@ const AttendanceManagementPage: React.FC = () => {
   const resetFilters = () => {
     setFilters({
       search: '',
-      course: '',
-      level: '',
+      department: '',
       status: '',
       verification: '',
       dateRange: null
@@ -205,25 +182,24 @@ const AttendanceManagementPage: React.FC = () => {
   };
 
   // View record details
-  const viewRecordDetails = (record: AttendanceRecord) => {
+  const viewRecordDetails = (record: StaffAttendanceRecord) => {
     setSelectedRecord(record);
     setDetailModalVisible(true);
   };
 
   // Export data
   const exportToCSV = () => {
-    const headers = ['Student ID', 'Name', 'Matric', 'Course', 'Level', 'Date', 'Time', 'Status', 'Method', 'Score'];
+    const headers = ['Staff ID', 'Name', 'Department', 'Date', 'Check-in Time', 'Status', 'Verification Method', 'Confidence Score', 'Hours Worked'];
     const csvData = filteredData.map(record => [
-      record.student_id,
-      record.student_name,
-      record.matric_number,
-      `${record.course_code} - ${record.course_title}`,
-      record.level,
+      record.staff_id,
+      record.staff_name,
+      record.department.toUpperCase(),
       record.attendance_date,
       dayjs(record.check_in_time).format('HH:mm:ss'),
-      record.status,
+      record.status.toUpperCase(),
       record.verification_method,
-      record.score
+      record.confidence_score ? `${(record.confidence_score * 100).toFixed(1)}%` : 'N/A',
+      record.total_hours ? record.total_hours.toFixed(2) : 'N/A'
     ]);
 
     const csvContent = [
@@ -235,7 +211,7 @@ const AttendanceManagementPage: React.FC = () => {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `attendance_${dayjs().format('YYYY-MM-DD_HH-mm')}.csv`);
+    link.setAttribute('download', `staff_attendance_${dayjs().format('YYYY-MM-DD_HH-mm')}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -244,53 +220,63 @@ const AttendanceManagementPage: React.FC = () => {
     message.success('Data exported successfully');
   };
 
+  // Get department color
+  const getDepartmentColor = (dept: string) => {
+    const colors: Record<string, string> = {
+      studio: '#00aaff',
+      logistics: '#00ffaa',
+      bakery: '#ffaa00',
+      spa: '#9b59b6'
+    };
+    return colors[dept] || '#1890ff';
+  };
+
   // Table columns
   const columns = [
     {
-      title: 'Student',
-      dataIndex: 'student_name',
-      key: 'student_name',
+      title: 'Staff',
+      dataIndex: 'staff_name',
+      key: 'staff_name',
       width: isMobile ? 150 : 200,
-      render: (text: string, record: AttendanceRecord) => (
+      render: (text: string, record: StaffAttendanceRecord) => (
         <Space>
-          <Avatar size="small" icon={<UserOutlined />} />
+          <Avatar 
+            size="small" 
+            style={{ 
+              backgroundColor: getDepartmentColor(record.department),
+              color: 'white'
+            }}
+          >
+            {text.charAt(0)}
+          </Avatar>
           <div>
             <div style={{ fontWeight: 500 }}>{text}</div>
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              {record.matric_number}
+              {record.staff_id}
             </Text>
           </div>
         </Space>
       ),
     },
     {
-      title: 'Course',
-      dataIndex: 'course_code',
-      key: 'course_code',
-      width: isMobile ? 120 : 150,
-      render: (code: string, record: AttendanceRecord) => (
-        <div>
-          <Tag color="blue" style={{ marginBottom: 4 }}>
-            {code}
-          </Tag>
-          <div style={{ fontSize: '12px' }}>{record.course_title}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Level',
-      dataIndex: 'level',
-      key: 'level',
-      width: 80,
-      render: (level: number) => (
-        <Tag color="purple">Level {level}</Tag>
+      title: 'Department',
+      dataIndex: 'department',
+      key: 'department',
+      width: isMobile ? 100 : 120,
+      render: (dept: string) => (
+        <Tag 
+          color={getDepartmentColor(dept)}
+          style={{ color: 'white', fontWeight: 500 }}
+        >
+          {dept.toUpperCase()}
+        </Tag>
       ),
     },
     {
       title: 'Date & Time',
       key: 'datetime',
       width: isMobile ? 140 : 180,
-      render: (record: AttendanceRecord) => (
+      render: (record: StaffAttendanceRecord) => (
         <div>
           <div style={{ fontWeight: 500 }}>
             <CalendarOutlined style={{ marginRight: 4 }} />
@@ -312,7 +298,8 @@ const AttendanceManagementPage: React.FC = () => {
         const statusConfig: any = {
           present: { color: 'green', icon: <CheckCircleOutlined />, text: 'Present' },
           absent: { color: 'red', icon: <CloseCircleOutlined />, text: 'Absent' },
-          late: { color: 'orange', icon: <ClockCircleOutlined />, text: 'Late' }
+          late: { color: 'orange', icon: <ClockCircleOutlined />, text: 'Late' },
+          early_departure: { color: 'volcano', icon: <ClockCircleOutlined />, text: 'Early' }
         };
         const config = statusConfig[status] || statusConfig.present;
         return (
@@ -327,32 +314,33 @@ const AttendanceManagementPage: React.FC = () => {
       dataIndex: 'verification_method',
       key: 'verification_method',
       width: isMobile ? 100 : 120,
-      render: (method: string, record: AttendanceRecord) => (
-        <Tooltip title={`Confidence: ${record.confidence_score || 'N/A'}`}>
+      render: (method: string, record: StaffAttendanceRecord) => (
+        <Tooltip title={`Confidence: ${record.confidence_score ? (record.confidence_score * 100).toFixed(1) + '%' : 'N/A'}`}>
           <Badge
             color={method === 'face_recognition' ? 'green' : 'blue'}
             text={
               method === 'face_recognition' ? 'Face ID' :
-              method === 'manual' ? 'Manual' : 'QR Code'
+              method === 'manual' ? 'Manual' : 'Card'
             }
           />
         </Tooltip>
       ),
     },
     {
-      title: 'Score',
-      dataIndex: 'score',
-      key: 'score',
+      title: 'Hours',
+      key: 'hours',
       width: 80,
-      render: (score: string) => (
-        <Tag color="gold">{score}</Tag>
+      render: (record: StaffAttendanceRecord) => (
+        <Text>
+          {record.total_hours ? `${record.total_hours.toFixed(1)}h` : 'N/A'}
+        </Text>
       ),
     },
     {
       title: 'Actions',
       key: 'actions',
       width: 80,
-      render: (record: AttendanceRecord) => (
+      render: (record: StaffAttendanceRecord) => (
         <Button
           type="link"
           icon={<EyeOutlined />}
@@ -368,26 +356,42 @@ const AttendanceManagementPage: React.FC = () => {
     {
       title: 'Details',
       key: 'details',
-      render: (record: AttendanceRecord) => (
+      render: (record: StaffAttendanceRecord) => (
         <div style={{ padding: '8px 0' }}>
           <Row gutter={[8, 8]}>
             <Col span={24}>
               <Space>
-                <Avatar size="small" icon={<UserOutlined />} />
+                <Avatar 
+                  size="small" 
+                  style={{ 
+                    backgroundColor: getDepartmentColor(record.department),
+                    color: 'white'
+                  }}
+                >
+                  {record.staff_name.charAt(0)}
+                </Avatar>
                 <div>
-                  <div style={{ fontWeight: 500 }}>{record.student_name}</div>
+                  <div style={{ fontWeight: 500 }}>{record.staff_name}</div>
                   <Text type="secondary" style={{ fontSize: '12px' }}>
-                    {record.matric_number}
+                    {record.staff_id}
                   </Text>
                 </div>
               </Space>
             </Col>
             <Col span={24}>
-              <Tag color="blue">{record.course_code}</Tag>
-              <Tag color="purple" style={{ marginLeft: 4 }}>L{record.level}</Tag>
+              <Tag 
+                color={getDepartmentColor(record.department)}
+                style={{ color: 'white', fontWeight: 500 }}
+              >
+                {record.department.toUpperCase()}
+              </Tag>
               {record.status === 'present' ? (
                 <Tag color="green" icon={<CheckCircleOutlined />} style={{ marginLeft: 4 }}>
                   Present
+                </Tag>
+              ) : record.status === 'late' ? (
+                <Tag color="orange" icon={<ClockCircleOutlined />} style={{ marginLeft: 4 }}>
+                  Late
                 </Tag>
               ) : (
                 <Tag color="red" icon={<CloseCircleOutlined />} style={{ marginLeft: 4 }}>
@@ -431,10 +435,10 @@ const AttendanceManagementPage: React.FC = () => {
   return (
     <div style={{ padding: isMobile ? '12px' : '24px', maxWidth: 1400, margin: '0 auto' }}>
       <Title level={2} style={{ marginBottom: 24 }}>
-        Attendance Management
+        Staff Attendance Management
       </Title>
       <Text type="secondary">
-        View, search, and filter attendance records for all courses
+        View, search, and filter attendance records for Nigeram staff
       </Text>
 
       {/* Statistics Cards */}
@@ -444,7 +448,7 @@ const AttendanceManagementPage: React.FC = () => {
             <Statistic
               title="Total Records"
               value={stats.total}
-              prefix={<BookOutlined />}
+              prefix={<TeamOutlined />}
               valueStyle={{ color: '#1890ff' }}
             />
           </Card>
@@ -462,10 +466,10 @@ const AttendanceManagementPage: React.FC = () => {
         <Col xs={24} sm={12} md={4}>
           <Card size="small">
             <Statistic
-              title="Absent/Late"
-              value={stats.absent}
-              prefix={<CloseCircleOutlined />}
-              valueStyle={{ color: '#ff4d4f' }}
+              title="Late"
+              value={stats.late}
+              prefix={<ClockCircleOutlined />}
+              valueStyle={{ color: '#faad14' }}
             />
           </Card>
         </Col>
@@ -475,6 +479,7 @@ const AttendanceManagementPage: React.FC = () => {
               title="Face Verified"
               value={stats.faceVerified}
               suffix={`/ ${stats.total}`}
+              prefix={<UserOutlined />}
               valueStyle={{ color: '#722ed1' }}
             />
           </Card>
@@ -482,9 +487,10 @@ const AttendanceManagementPage: React.FC = () => {
         <Col xs={24} sm={12} md={6}>
           <Card size="small">
             <Statistic
-              title="Last Updated"
-              value={attendanceData[0] ? dayjs(attendanceData[0].updated_at).format('MMM D, h:mm A') : 'N/A'}
-              valueStyle={{ fontSize: '14px', color: '#8c8c8c' }}
+              title="Departments"
+              value={4}
+              prefix={<ApartmentOutlined />}
+              valueStyle={{ color: '#13c2c2' }}
             />
           </Card>
         </Col>
@@ -522,7 +528,7 @@ const AttendanceManagementPage: React.FC = () => {
         <Row gutter={[16, 16]}>
           <Col xs={24} md={8}>
             <Input
-              placeholder="Search students, courses, or matric numbers..."
+              placeholder="Search staff name or ID..."
               prefix={<SearchOutlined />}
               value={filters.search}
               onChange={(e) => setFilters({...filters, search: e.target.value})}
@@ -532,37 +538,24 @@ const AttendanceManagementPage: React.FC = () => {
           </Col>
           <Col xs={12} md={4}>
             <Select
-              placeholder="Course"
+              placeholder="Department"
               style={{ width: '100%' }}
-              value={filters.course || undefined}
-              onChange={(value) => setFilters({...filters, course: value})}
+              value={filters.department || undefined}
+              onChange={(value) => setFilters({...filters, department: value})}
               size={isMobile ? "small" : "middle"}
               allowClear
             >
-              {courses.map(course => (
-                <Option key={course} value={course}>
-                  {course}
+              {departments.map(dept => (
+                <Option key={dept} value={dept}>
+                  <Tag color={getDepartmentColor(dept)} style={{ marginRight: 4 }}>
+                    {dept.charAt(0).toUpperCase()}
+                  </Tag>
+                  {dept.toUpperCase()}
                 </Option>
               ))}
             </Select>
           </Col>
-          <Col xs={12} md={3}>
-            <Select
-              placeholder="Level"
-              style={{ width: '100%' }}
-              value={filters.level || undefined}
-              onChange={(value) => setFilters({...filters, level: value})}
-              size={isMobile ? "small" : "middle"}
-              allowClear
-            >
-              {levels.map(level => (
-                <Option key={level} value={level.toString()}>
-                  Level {level}
-                </Option>
-              ))}
-            </Select>
-          </Col>
-          <Col xs={12} md={3}>
+          <Col xs={12} md={4}>
             <Select
               placeholder="Status"
               style={{ width: '100%' }}
@@ -574,9 +567,10 @@ const AttendanceManagementPage: React.FC = () => {
               <Option value="present">Present</Option>
               <Option value="absent">Absent</Option>
               <Option value="late">Late</Option>
+              <Option value="early_departure">Early Departure</Option>
             </Select>
           </Col>
-          <Col xs={12} md={3}>
+          <Col xs={12} md={4}>
             <Select
               placeholder="Method"
               style={{ width: '100%' }}
@@ -587,10 +581,10 @@ const AttendanceManagementPage: React.FC = () => {
             >
               <Option value="face_recognition">Face ID</Option>
               <Option value="manual">Manual</Option>
-              <Option value="qr_code">QR Code</Option>
+              <Option value="card_swipe">Card</Option>
             </Select>
           </Col>
-          <Col xs={24} md={9}>
+          <Col xs={24} md={8}>
             <RangePicker
               style={{ width: '100%' }}
               placeholder={['Start Date', 'End Date']}
@@ -605,7 +599,7 @@ const AttendanceManagementPage: React.FC = () => {
 
       {/* Results Alert */}
       <Alert
-        message={`Showing ${filteredData.length} of ${attendanceData.length} records`}
+        message={`Showing ${filteredData.length} of ${attendanceData.length} attendance records`}
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
@@ -631,40 +625,12 @@ const AttendanceManagementPage: React.FC = () => {
           }}
           scroll={{ x: isMobile ? 400 : 1200 }}
           size={isMobile ? "small" : "middle"}
-          expandable={isMobile ? undefined : {
-            expandedRowRender: (record) => (
-              <Descriptions size="small" column={2} bordered>
-                <Descriptions.Item label="Student ID">{record.student_id}</Descriptions.Item>
-                <Descriptions.Item label="Course">{record.course_title}</Descriptions.Item>
-                <Descriptions.Item label="Attendance Date">
-                  {dayjs(record.attendance_date).format('dddd, MMMM D, YYYY')}
-                </Descriptions.Item>
-                <Descriptions.Item label="Check-in Time">
-                  {dayjs(record.check_in_time).format('h:mm:ss A')}
-                </Descriptions.Item>
-                <Descriptions.Item label="Verification Method">
-                  <Tag color={record.verification_method === 'face_recognition' ? 'green' : 'blue'}>
-                    {record.verification_method}
-                  </Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="Confidence Score">
-                  {record.confidence_score ? `${(record.confidence_score * 100).toFixed(1)}%` : 'N/A'}
-                </Descriptions.Item>
-                <Descriptions.Item label="Record Created">
-                  {dayjs(record.created_at).format('MMM D, YYYY h:mm A')}
-                </Descriptions.Item>
-                <Descriptions.Item label="Last Updated">
-                  {dayjs(record.updated_at).format('MMM D, YYYY h:mm A')}
-                </Descriptions.Item>
-              </Descriptions>
-            ),
-          }}
         />
       </Card>
 
       {/* Detail Modal */}
       <Modal
-        title="Attendance Record Details"
+        title="Staff Attendance Record Details"
         open={detailModalVisible}
         onCancel={() => setDetailModalVisible(false)}
         footer={[
@@ -676,26 +642,29 @@ const AttendanceManagementPage: React.FC = () => {
       >
         {selectedRecord && (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label="Student">
+            <Descriptions.Item label="Staff">
               <Space>
-                <Avatar icon={<UserOutlined />} />
+                <Avatar 
+                  style={{ 
+                    backgroundColor: getDepartmentColor(selectedRecord.department),
+                    color: 'white'
+                  }}
+                >
+                  {selectedRecord.staff_name.charAt(0)}
+                </Avatar>
                 <div>
-                  <div style={{ fontWeight: 500 }}>{selectedRecord.student_name}</div>
-                  <Text type="secondary">{selectedRecord.matric_number}</Text>
+                  <div style={{ fontWeight: 500 }}>{selectedRecord.staff_name}</div>
+                  <Text type="secondary">{selectedRecord.staff_id}</Text>
                 </div>
               </Space>
             </Descriptions.Item>
-            <Descriptions.Item label="Student ID">
-              {selectedRecord.student_id}
-            </Descriptions.Item>
-            <Descriptions.Item label="Course">
-              <div>
-                <Tag color="blue">{selectedRecord.course_code}</Tag>
-                <div style={{ marginTop: 4 }}>{selectedRecord.course_title}</div>
-              </div>
-            </Descriptions.Item>
-            <Descriptions.Item label="Level">
-              <Tag color="purple">Level {selectedRecord.level}</Tag>
+            <Descriptions.Item label="Department">
+              <Tag 
+                color={getDepartmentColor(selectedRecord.department)}
+                style={{ color: 'white', fontWeight: 500 }}
+              >
+                {selectedRecord.department.toUpperCase()}
+              </Tag>
             </Descriptions.Item>
             <Descriptions.Item label="Attendance Date">
               {dayjs(selectedRecord.attendance_date).format('dddd, MMMM D, YYYY')}
@@ -708,8 +677,10 @@ const AttendanceManagementPage: React.FC = () => {
                 <Tag color="green" icon={<CheckCircleOutlined />}>Present</Tag>
               ) : selectedRecord.status === 'absent' ? (
                 <Tag color="red" icon={<CloseCircleOutlined />}>Absent</Tag>
-              ) : (
+              ) : selectedRecord.status === 'late' ? (
                 <Tag color="orange" icon={<ClockCircleOutlined />}>Late</Tag>
+              ) : (
+                <Tag color="volcano" icon={<ClockCircleOutlined />}>Early Departure</Tag>
               )}
             </Descriptions.Item>
             <Descriptions.Item label="Verification Method">
@@ -735,9 +706,23 @@ const AttendanceManagementPage: React.FC = () => {
                 </div>
               ) : 'N/A'}
             </Descriptions.Item>
-            <Descriptions.Item label="Score">
-              <Tag color="gold">{selectedRecord.score}</Tag>
-            </Descriptions.Item>
+            {selectedRecord.total_hours && (
+              <Descriptions.Item label="Hours Worked">
+                <Text strong>{selectedRecord.total_hours.toFixed(2)} hours</Text>
+                {selectedRecord.overtime_minutes && selectedRecord.overtime_minutes > 0 && (
+                  <div>
+                    <Text type="secondary" style={{ fontSize: '12px' }}>
+                      +{selectedRecord.overtime_minutes} mins overtime
+                    </Text>
+                  </div>
+                )}
+              </Descriptions.Item>
+            )}
+            {selectedRecord.location && (
+              <Descriptions.Item label="Location">
+                {selectedRecord.location}
+              </Descriptions.Item>
+            )}
             <Descriptions.Item label="Record Created">
               {dayjs(selectedRecord.created_at).format('MMM D, YYYY h:mm:ss A')}
             </Descriptions.Item>

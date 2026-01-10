@@ -1,4 +1,4 @@
-// src/components/FaceCamera.tsx - MOBILE-KIOSK OPTIMIZED (AUTO ONLY)
+// src/components/FaceCamera.tsx - NIGERAM STAFF VERSION
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Typography, 
@@ -10,7 +10,7 @@ const { Text } = Typography;
 
 interface FaceCameraProps {
   mode: 'enrollment' | 'attendance';
-  student?: any;
+  staff?: any;  // Changed from student to staff
   onEnrollmentComplete?: (result: any) => void;
   onAttendanceComplete?: (result: any) => void;
   autoCapture?: boolean;
@@ -19,7 +19,7 @@ interface FaceCameraProps {
 
 const FaceCamera: React.FC<FaceCameraProps> = ({
   mode,
-  student,
+  staff,  // Changed from student to staff
   onEnrollmentComplete,
   onAttendanceComplete,
   autoCapture = true,
@@ -177,7 +177,7 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
     }
   };
 
-  // Process capture
+  // Process capture - UPDATED for staff
   const processCapture = (imageData: string) => {
     setProgress(0);
 
@@ -194,11 +194,12 @@ const FaceCamera: React.FC<FaceCameraProps> = ({
           };
 
           if (mode === 'enrollment') {
+            // UPDATED: Changed from student to staff
             Object.assign(result, {
-              studentId: student?.id || student?.student_id || student?.matric_number,
-              studentName: student?.name,
-              matricNumber: student?.matric_number,
-              student: student
+              staffId: staff?.id || staff?.staff_id,
+              staffName: staff?.name,
+              staffDepartment: staff?.department,
+              staff: staff
             });
             
             setTimeout(() => {

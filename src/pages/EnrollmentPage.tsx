@@ -1,4 +1,4 @@
-// src/pages/EnrollmentPage.tsx - CORRECTED VERSION
+// src/pages/EnrollmentPage.tsx - NIGERAM CUSTOMIZED VERSION
 import React, { useState, useEffect } from 'react';
 import { 
   Card, 
@@ -16,7 +16,7 @@ import {
   Tag,
   Spin
 } from 'antd';
-import { Camera, User, BookOpen, CheckCircle, GraduationCap, Calendar } from 'lucide-react';
+import { Camera, User, Briefcase, CheckCircle, Users, Calendar } from 'lucide-react';
 import FaceCamera from '../components/FaceCamera';
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../utils/imageUtils';
@@ -26,77 +26,36 @@ const { Title, Text } = Typography;
 
 const EnrollmentPage: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(0);
-  const [studentData, setStudentData] = useState<any>({});
+  const [staffData, setStaffData] = useState<any>({});
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
-  const [academicForm] = Form.useForm();
+  const [departmentForm] = Form.useForm();
   const [enrollmentComplete, setEnrollmentComplete] = useState(false);
   const [enrollmentResult, setEnrollmentResult] = useState<any>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [matricNumber, setMatricNumber] = useState<string>('');
+  const [staffId, setStaffId] = useState<string>('');
   
-  // State for fetched data
-  const [programs, setPrograms] = useState<any[]>([]);
-  const [levels, setLevels] = useState([
-    { value: 100, label: '100 Level' },
-    { value: 200, label: '200 Level' },
-    { value: 300, label: '300 Level' },
-    { value: 400, label: '400 Level' },
-    { value: 500, label: '500 Level' },
-  ]);
+  // Nigeram specific departments
+  const departments = [
+    { value: 'studio', label: 'Studio', color: '#00aaff' },
+    { value: 'logistics', label: 'Logistics', color: '#00ffaa' },
+    { value: 'bakery', label: 'Bakery', color: '#ffaa00' },
+    { value: 'spa', label: 'Spa', color: '#9b59b6' },
+  ];
 
-  const generateMatricNumber = () => {
-    const currentYear = new Date().getFullYear();
+  // Generate staff ID
+  const generateStaffId = () => {
+    const prefix = 'NIG'; // Nigeram prefix
     const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    return `ABU/${currentYear}/${randomNum}`;
+    const currentYear = new Date().getFullYear().toString().slice(-2);
+    return `${prefix}${currentYear}${randomNum}`;
   };
 
-  // Fetch programs
-  const fetchPrograms = async () => {
-    try {
-      // Check if programs table exists
-      const { data: programsData, error: programsError } = await supabase
-        .from('programs')
-        .select('id, code, name, short_name')
-        .eq('is_active', true)
-        .order('name');
-
-      if (programsError) {
-        console.warn('Programs table may not exist, using defaults:', programsError);
-        // Use default programs
-        setPrograms([
-          { id: '1', code: 'CSC', name: 'Computer Science', short_name: 'CS' },
-          { id: '2', code: 'EEE', name: 'Electrical Engineering', short_name: 'EE' },
-          { id: '3', code: 'MED', name: 'Medicine', short_name: 'MD' },
-          { id: '4', code: 'LAW', name: 'Law', short_name: 'LW' },
-        ]);
-        return;
-      }
-
-      setPrograms(programsData || []);
-      console.log('Fetched programs:', programsData?.length || 0);
-
-    } catch (error: any) {
-      console.error('Error fetching programs:', error);
-      // Use defaults on error
-      setPrograms([
-        { id: '1', code: 'CSC', name: 'Computer Science', short_name: 'CS' },
-        { id: '2', code: 'EEE', name: 'Electrical Engineering', short_name: 'EE' },
-        { id: '3', code: 'MED', name: 'Medicine', short_name: 'MD' },
-        { id: '4', code: 'LAW', name: 'Law', short_name: 'LW' },
-      ]);
-      message.warning('Using default program options');
-    }
-  };
-
-  // Generate matric number when component mounts
+  // Generate employee ID when component mounts
   useEffect(() => {
-    const newMatric = generateMatricNumber();
-    setMatricNumber(newMatric);
-    form.setFieldValue('matric_number', newMatric);
-    
-    // Fetch programs
-    fetchPrograms();
+    const newStaffId = generateStaffId();
+    setStaffId(newStaffId);
+    form.setFieldValue('staff_id', newStaffId);
   }, [form]);
 
   const handleNext = async () => {
@@ -105,22 +64,22 @@ const EnrollmentPage: React.FC = () => {
         await form.validateFields();
         const values = form.getFieldsValue();
         
-        // Ensure matric number is set
-        if (!values.matric_number?.trim()) {
-          const newMatric = generateMatricNumber();
-          values.matric_number = newMatric;
-          setMatricNumber(newMatric);
-          form.setFieldValue('matric_number', newMatric);
+        // Ensure staff ID is set
+        if (!values.staff_id?.trim()) {
+          const newStaffId = generateStaffId();
+          values.staff_id = newStaffId;
+          setStaffId(newStaffId);
+          form.setFieldValue('staff_id', newStaffId);
         }
 
         console.log('Proceeding with values:', values);
-        setStudentData(values);
+        setStaffData(values);
         setCurrentStep(1);
       } else if (currentStep === 1) {
-        // Validate academic form
-        await academicForm.validateFields();
-        const academicValues = await academicForm.getFieldsValue();
-        setStudentData((prev: any) => ({ ...prev, ...academicValues }));
+        // Validate department form
+        await departmentForm.validateFields();
+        const departmentValues = await departmentForm.getFieldsValue();
+        setStaffData((prev: any) => ({ ...prev, ...departmentValues }));
         setCurrentStep(2);
       }
     } catch (error: any) {
@@ -134,11 +93,11 @@ const EnrollmentPage: React.FC = () => {
     setCurrentStep(currentStep - 1);
   };
 
-  const handleRegenerateMatric = () => {
-    const newMatric = generateMatricNumber();
-    setMatricNumber(newMatric);
-    form.setFieldValue('matric_number', newMatric);
-    message.success('New matric number generated');
+  const handleRegenerateStaffId = () => {
+    const newStaffId = generateStaffId();
+    setStaffId(newStaffId);
+    form.setFieldValue('staff_id', newStaffId);
+    message.success('New staff ID generated');
   };
 
   // Helper function to convert data URL to blob
@@ -160,8 +119,7 @@ const EnrollmentPage: React.FC = () => {
     }
   };
 
-  // ========== ENROLLMENT HANDLER ==========
-  // This is for enrollment, NOT attendance!
+  // Enrollment handler
   const handleEnrollmentComplete = async (result: any) => {
     console.log('=== ENROLLMENT COMPLETE TRIGGERED ===');
     console.log('Full result from FaceCamera:', result);
@@ -175,25 +133,24 @@ const EnrollmentPage: React.FC = () => {
 
       setLoading(true);
 
-      // Extract student information with fallbacks
-      const studentId = result.matricNumber || result.studentId || matricNumber;
-      const studentName = result.studentName || studentData.name || 'Unknown Student';
-      const studentLevel = result.level || studentData.level || 100;
-      const studentProgramId = result.program_id || studentData.program_id;
-      const studentGender = result.gender || studentData.gender || 'male';
+      // Extract staff information
+     // Line 137 - FIXED VERSION:
+       const currentStaffId = result.staffId || result.staff_id || staffData.staff_id || staffId;
+      const staffName = result.staffName || staffData.name || 'Unknown Staff';
+      const staffDepartment = result.department || staffData.department;
+      const staffGender = result.gender || staffData.gender || 'male';
       
-      console.log('Extracted student info:', {
-        studentId,
-        studentName,
-        studentLevel,
-        studentProgramId,
-        studentGender
+      console.log('Extracted staff info:', {
+        staffId,
+        staffName,
+        staffDepartment,
+        staffGender
       });
 
       // Validate required fields
-      if (!studentId || !studentName) {
-        console.error('Missing required student information:', { studentId, studentName });
-        message.error('Missing student information. Please complete all form steps.');
+      if (!staffId || !staffName || !staffDepartment) {
+        console.error('Missing required staff information:', { staffId, staffName, staffDepartment });
+        message.error('Missing staff information. Please complete all form steps.');
         setLoading(false);
         return;
       }
@@ -202,12 +159,9 @@ const EnrollmentPage: React.FC = () => {
       const compressedImage = await compressImage(result.photoData.base64, 640, 0.8);
       
       // Generate a unique filename
-      const fileName = `enrollment_${Date.now()}_${studentName.replace(/\s+/g, '_')}.jpg`;
+      const fileName = `enrollment_${Date.now()}_${staffName.replace(/\s+/g, '_')}.jpg`;
       
-      console.log('Processing enrollment for:', studentName, 'with ID:', studentId);
-      
-      // DECLARE programName at a higher scope so it's available in catch block
-      let programName = 'Not specified';
+      console.log('Processing enrollment for:', staffName, 'with ID:', staffId);
       
       try {
         let photoUrl = '';
@@ -217,7 +171,7 @@ const EnrollmentPage: React.FC = () => {
         try {
           console.log('Attempting to upload to Supabase Storage...');
           const { error: storageError } = await supabase.storage
-            .from('student-photos')
+            .from('staff-photos')
             .upload(fileName, dataURLtoBlob(compressedImage), {
               contentType: 'image/jpeg',
               upsert: true
@@ -226,7 +180,7 @@ const EnrollmentPage: React.FC = () => {
           if (!storageError) {
             // Get public URL
             const { data: publicUrlData } = supabase.storage
-              .from('student-photos')
+              .from('staff-photos')
               .getPublicUrl(fileName);
             
             photoUrl = publicUrlData.publicUrl;
@@ -237,99 +191,83 @@ const EnrollmentPage: React.FC = () => {
         } catch (storageError) {
           console.warn('❌ Storage bucket may not exist:', storageError);
         }
-
-        // Get program name
-        const selectedProgram = programs.find(p => p.id === studentProgramId);
-        programName = selectedProgram?.name || selectedProgram?.code || 'Not specified';
         
-        // Get current year for admission
-        const currentYear = new Date().getFullYear();
-        const enrollmentDate = new Date();
+        // Get current date for employment
+        const currentDate = new Date();
         
-        // ========== STEP 1: EXTRACT FACE EMBEDDING ==========
-        console.log('=== STEP 1: Extracting face embedding ===');
+        // Extract face embedding
+        console.log('=== Extracting face embedding ===');
         let embeddingArray = null;
         let embeddingError = null;
 
         try {
-          // Test the faceRecognition module first
-          console.log('Testing faceRecognition module...');
-          console.log('Module exists?', !!faceRecognition);
-          console.log('extractFaceDescriptor exists?', !!faceRecognition.extractFaceDescriptor);
-          
           const descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
           
           if (descriptor) {
             embeddingArray = Array.from(descriptor);
             console.log('✅ Face embedding extracted, length:', embeddingArray.length);
-            console.log('First 5 values:', embeddingArray.slice(0, 5));
             
             // Save to local storage
-            faceRecognition.saveEmbeddingToLocal(studentId, descriptor);
+            faceRecognition.saveEmbeddingToLocal(staffId, descriptor);
           } else {
             console.log('⚠️ No face detected - embedding not extracted');
             embeddingError = new Error('No face detected in image');
           }
         } catch (err: any) {
           console.error('❌ Could not extract face embedding:', err);
-          console.error('Error details:', err.message, err.stack);
           embeddingError = err;
         }
 
-        // If embedding failed, we can't continue with enrollment
+        // If embedding failed, save as pending
         if (!embeddingArray) {
-          throw new Error(`Face embedding extraction failed: ${embeddingError?.message || 'No face detected'}. Please ensure the face is clearly visible and try again.`);
+          throw new Error(`Face embedding extraction failed: ${embeddingError?.message || 'No face detected'}.`);
         }
 
-        // ========== STEP 2: SAVE STUDENT WITH EMBEDDING ==========
-        console.log('=== STEP 2: Saving student with embedding ===');
+        // Save staff with embedding
+        console.log('=== Saving staff with embedding ===');
 
-        // Prepare student data WITH embedding
-        const studentRecord = {
-          student_id: studentId,
-          matric_number: studentId,
-          name: studentName,
-          gender: studentGender,
-          level: studentLevel,
-          program: programName,
-          program_id: studentProgramId,
-          admission_year: currentYear,
-          enrollment_status: 'enrolled' as const,
-          enrollment_date: enrollmentDate.toISOString().split('T')[0], // Date only
+        // Prepare staff data WITH embedding
+        const staffRecord = {
+           staff_id: currentStaffId,  // Changed here
+          name: staffName,
+          gender: staffGender,
+          department: staffDepartment,
+          employment_date: currentDate.toISOString().split('T')[0],
+          employment_status: 'active',
+          enrollment_date: currentDate.toISOString().split('T')[0],
           photo_url: photoUrl || null,
-          photo_data: photoData.replace(/^data:image\/\w+;base64,/, ''), // Remove data URL prefix
-          face_embedding: embeddingArray, // ← CRITICAL: Embedding is included
-          face_enrolled_at: enrollmentDate.toISOString(),
-          last_updated: enrollmentDate.toISOString(),
-          created_at: enrollmentDate.toISOString()
+          photo_data: photoData.replace(/^data:image\/\w+;base64,/, ''),
+          face_embedding: embeddingArray,
+          face_enrolled_at: currentDate.toISOString(),
+          last_updated: currentDate.toISOString(),
+          created_at: currentDate.toISOString()
         };
         
-        console.log('📊 Student data for database (with embedding):', {
-          ...studentRecord,
-          face_embedding_length: studentRecord.face_embedding?.length,
-          face_embedding_first_5: studentRecord.face_embedding?.slice(0, 5)
+        console.log('📊 Staff data for database (with embedding):', {
+          ...staffRecord,
+          face_embedding_length: staffRecord.face_embedding?.length,
         });
         
-        // Check if student already exists
-        const { data: existingStudent, error: checkError } = await supabase
-          .from('students')
-          .select('matric_number, id')
-          .eq('matric_number', studentId)
+        // Check if staff already exists
+        const { data: existingStaff, error: checkError } = await supabase
+          .from('staff')
+          .select('staff_id, id')
+          .eq('staff_id', staffId)
           .maybeSingle();
         
         let dbResult;
         
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error('Error checking student existence:', checkError);
+        if (checkError && checkError.code !== 'PGRST116') {
+          console.error('Error checking staff existence:', checkError);
           throw checkError;
         }
         
-        if (!existingStudent) {
-          // Student doesn't exist, INSERT with embedding
-          console.log('Inserting new student with embedding...');
+        if (!existingStaff) {
+          // Staff doesn't exist, INSERT with embedding
+          console.log('Inserting new staff with embedding...');
           const { data: insertData, error: insertError } = await supabase
-            .from('students')
-            .insert([studentRecord])
+            .from('staff')
+            .insert([staffRecord])
             .select();
           
           if (insertError) {
@@ -337,17 +275,17 @@ const EnrollmentPage: React.FC = () => {
             throw insertError;
           }
           dbResult = insertData;
-          console.log('✅ New student inserted with embedding:', dbResult);
+          console.log('✅ New staff inserted with embedding:', dbResult);
         } else {
-          // Student exists, UPDATE with all fields including embedding
-          console.log('Updating existing student with embedding...');
+          // Staff exists, UPDATE with all fields including embedding
+          console.log('Updating existing staff with embedding...');
           const { data: updateData, error: updateError } = await supabase
-            .from('students')
+            .from('staff')
             .update({
-              ...studentRecord,
-              id: existingStudent.id // Keep the existing ID
+              ...staffRecord,
+              id: existingStaff.id
             })
-            .eq('matric_number', studentId)
+            .eq('staff_id', staffId)
             .select();
           
           if (updateError) {
@@ -355,65 +293,60 @@ const EnrollmentPage: React.FC = () => {
             throw updateError;
           }
           dbResult = updateData;
-          console.log('✅ Student updated with embedding:', dbResult);
+          console.log('✅ Staff updated with embedding:', dbResult);
         }
         
-        // Store in student_photos table if it exists
+        // Store in staff_photos table if it exists
         try {
-          console.log('Checking for student_photos table...');
-          
-          // First, check if the table exists by trying to select from it
           const { error: tableCheckError } = await supabase
-            .from('student_photos')
+            .from('staff_photos')
             .select('count')
             .limit(1);
           
           if (!tableCheckError) {
-            // Table exists, insert photo data
-            console.log('Saving to student_photos table...');
+            console.log('Saving to staff_photos table...');
             const { data: photoResult, error: photoError } = await supabase
-              .from('student_photos')
+              .from('staff_photos')
               .upsert([{
-                student_id: studentId,
+                staff_id: staffId,
                 photo_url: photoUrl,
                 photo_data: photoData.replace(/^data:image\/\w+;base64,/, ''),
                 is_primary: true,
                 embedding_extracted: true,
                 embedding_length: embeddingArray?.length
               }], {
-                onConflict: 'student_id,is_primary'
+                onConflict: 'staff_id,is_primary'
               })
               .select();
             
             if (photoError) {
               console.error('⚠️ Photo metadata save warning:', photoError);
             } else {
-              console.log('✅ Photo saved to student_photos:', photoResult);
+              console.log('✅ Photo saved to staff_photos:', photoResult);
             }
           } else {
-            console.log('⚠️ student_photos table does not exist or error:', tableCheckError);
+            console.log('⚠️ staff_photos table does not exist or error:', tableCheckError);
           }
         } catch (photoError) {
-          console.warn('⚠️ Could not save to student_photos:', photoError);
+          console.warn('⚠️ Could not save to staff_photos:', photoError);
         }
 
         // Save to local storage as backup
         try {
-          const key = `face_image_${studentId}`;
+          const key = `face_image_${staffId}`;
           localStorage.setItem(key, photoData);
           console.log('✅ Image saved to localStorage:', key);
         } catch (localError) {
           console.warn('⚠️ Local storage save failed:', localError);
         }
         
-        // ========== STEP 3: VERIFY ENROLLMENT ==========
-        console.log('=== STEP 3: Verifying enrollment ===');
+        // Verify the enrollment
+        console.log('=== Verifying enrollment ===');
         
-        // Verify the embedding was actually saved
         const { data: verifyData, error: verifyError } = await supabase
-          .from('students')
-          .select('student_id, name, face_embedding')
-          .eq('matric_number', studentId)
+          .from('staff')
+          .select('staff_id, name, face_embedding')
+          .eq('staff_id', staffId)
           .single();
         
         if (verifyError) {
@@ -422,23 +355,24 @@ const EnrollmentPage: React.FC = () => {
         }
         
         console.log('✅ Enrollment verified:', {
-          studentId: verifyData.student_id,
+          staffId: verifyData.staff_id,
           name: verifyData.name,
           embeddingSaved: verifyData.face_embedding !== null,
-          embeddingLength: verifyData.face_embedding?.length || 0
         });
+        
+        // Get department color for display
+        const deptInfo = departments.find(d => d.value === staffDepartment);
         
         // Set enrollment result
         setEnrollmentResult({
           success: true,
-          message: 'Enrollment completed successfully with face embedding!',
-          student: {
-            name: studentName,
-            student_id: studentId,
-            matric_number: studentId
+          message: 'Staff enrollment completed successfully!',
+          staff: {
+            name: staffName,
+            staff_id: staffId,
           },
-          level: studentLevel,
-          program: programName,
+          department: staffDepartment,
+          departmentColor: deptInfo?.color,
           faceCaptured: true,
           localStorageSaved: true,
           photoUrl: photoUrl || photoData,
@@ -447,41 +381,32 @@ const EnrollmentPage: React.FC = () => {
           embeddingLength: embeddingArray.length,
           verification: {
             embeddingPresent: verifyData.face_embedding !== null,
-            embeddingLength: verifyData.face_embedding?.length
           }
         });
         
         setEnrollmentComplete(true);
-        message.success(`Enrollment complete for ${studentName}! Face embedding saved.`);
+        message.success(`Enrollment complete for ${staffName}!`);
         
-      } catch (uploadError: any) {
-        console.error('❌ Upload/processing error:', uploadError);
-        console.error('Error details:', {
-          message: uploadError.message,
-          code: uploadError.code,
-          details: uploadError.details
-        });
+      } catch (error: any) {
+        console.error('❌ Upload/processing error:', error);
         
         // Fallback: Save as pending if embedding fails
         console.log('Attempting fallback save as pending...');
         const fallbackData = {
-          student_id: studentId,
-          name: studentName,
-          matric_number: studentId,
-          level: studentLevel,
-          program: programName,
-          program_id: studentProgramId,
-          gender: studentGender,
-          enrollment_status: 'pending' as const, // Set as pending, not enrolled
+          staff_id: staffId,
+          name: staffName,
+          department: staffDepartment,
+          gender: staffGender,
+          employment_status: 'pending',
           enrollment_date: new Date().toISOString().split('T')[0],
           last_updated: new Date().toISOString(),
-          face_embedding: null // Explicitly null since extraction failed
+          face_embedding: null
         };
         
         const { error: fallbackError } = await supabase
-          .from('students')
+          .from('staff')
           .upsert([fallbackData], {
-            onConflict: 'matric_number'
+            onConflict: 'staff_id'
           });
         
         if (fallbackError) {
@@ -493,28 +418,24 @@ const EnrollmentPage: React.FC = () => {
         
         setEnrollmentResult({
           success: false,
-          message: 'Enrollment failed: Could not extract face embedding. Student saved as "pending".',
-          student: {
-            name: studentName,
-            student_id: studentId,
-            matric_number: studentId
+          message: 'Enrollment failed: Could not extract face embedding. Staff saved as "pending".',
+          staff: {
+            name: staffName,
+            staff_id: staffId,
           },
-          level: studentLevel,
-          program: programName,
+          department: staffDepartment,
           faceCaptured: true,
-          localStorageSaved: false,
           databaseSaved: true,
           faceEmbeddingSaved: false,
           status: 'pending'
         });
         
         setEnrollmentComplete(true);
-        message.warning(`Enrollment incomplete for ${studentName}. Face embedding extraction failed. Student saved as "pending".`);
+        message.warning(`Enrollment incomplete for ${staffName}. Face embedding extraction failed. Staff saved as "pending".`);
       }
       
     } catch (error: any) {
       console.error('❌ Critical enrollment error:', error);
-      console.error('Error stack:', error.stack);
       setEnrollmentResult({
         success: false,
         message: `Failed to complete enrollment: ${error.message}`,
@@ -534,8 +455,8 @@ const EnrollmentPage: React.FC = () => {
       content: (
         <div>
           <Alert
-            message="Student Information"
-            description="Fill in the student's basic details. Matric number will be auto-generated."
+            message="Staff Information"
+            description="Fill in the staff's basic details. Staff ID will be auto-generated."
             type="info"
             showIcon
             style={{ marginBottom: 20 }}
@@ -555,7 +476,7 @@ const EnrollmentPage: React.FC = () => {
                   rules={[
                     { 
                       required: true, 
-                      message: 'Please enter student name',
+                      message: 'Please enter staff name',
                       whitespace: true
                     },
                     { 
@@ -566,7 +487,7 @@ const EnrollmentPage: React.FC = () => {
                   validateTrigger={['onChange', 'onBlur']}
                 >
                   <Input 
-                    placeholder="Enter student full name" 
+                    placeholder="Enter staff full name" 
                     size="large"
                   />
                 </Form.Item>
@@ -576,13 +497,13 @@ const EnrollmentPage: React.FC = () => {
             <Row gutter={[16, 16]}>
               <Col span={24}>
                 <Form.Item
-                  label="Matriculation Number *"
-                  name="matric_number"
-                  tooltip="This will also be used as Student ID"
+                  label="Staff ID *"
+                  name="staff_id"
+                  tooltip="This will be used for attendance tracking"
                 >
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <Input
-                      value={matricNumber}
+                      value={staffId}
                       readOnly
                       size="large"
                       style={{ 
@@ -591,18 +512,18 @@ const EnrollmentPage: React.FC = () => {
                         backgroundColor: '#fafafa',
                         cursor: 'not-allowed'
                       }}
-                      prefix={<GraduationCap size={16} />}
+                      prefix={<Users size={16} />}
                     />
                     <Button
                       type="default"
                       size="large"
-                      onClick={handleRegenerateMatric}
+                      onClick={handleRegenerateStaffId}
                     >
                       Regenerate
                     </Button>
                   </div>
                   <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                    Matric number is auto-generated. Click "Regenerate" for a new number.
+                    Staff ID is auto-generated. Click "Regenerate" for a new ID.
                   </Text>
                 </Form.Item>
               </Col>
@@ -623,85 +544,72 @@ const EnrollmentPage: React.FC = () => {
       ),
     },
     {
-      title: 'Academic Details',
-      icon: <BookOpen />,
+      title: 'Department',
+      icon: <Briefcase />,
       content: (
         <div style={{ maxWidth: 600, margin: '0 auto' }}>
           <Alert
-            message="Academic Information"
-            description="Select the student's academic program and level (Required for attendance tracking)"
+            message="Department Assignment"
+            description="Select the staff's department for attendance tracking"
             type="info"
             showIcon
             style={{ marginBottom: 20 }}
           />
           
-          {programs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 0' }}>
-              <Spin size="large" />
-              <Text style={{ display: 'block', marginTop: 16 }}>
-                Loading programs...
-              </Text>
+          <Form
+            form={departmentForm}
+            layout="vertical"
+          >
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item 
+                  label="Department *" 
+                  name="department"
+                  rules={[{ required: true, message: 'Please select department' }]}
+                  help="Required for attendance tracking and reporting"
+                >
+                  <Select 
+                    placeholder="Select department" 
+                    size="large"
+                    options={departments.map(dept => ({
+                      value: dept.value,
+                      label: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{
+                            width: '12px',
+                            height: '12px',
+                            borderRadius: '50%',
+                            backgroundColor: dept.color
+                          }} />
+                          <span>{dept.label}</span>
+                        </div>
+                      ),
+                    }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <div style={{ marginTop: 30 }}>
+              <Alert
+                type="info"
+                message="Nigeram Departments"
+                description={
+                  <div style={{ marginTop: '8px' }}>
+                    <Row gutter={[8, 8]}>
+                      {departments.map(dept => (
+                        <Col span={12} key={dept.value}>
+                          <Tag color={dept.color} style={{ width: '100%', textAlign: 'center' }}>
+                            {dept.label}
+                          </Tag>
+                        </Col>
+                      ))}
+                    </Row>
+                  </div>
+                }
+              />
             </div>
-          ) : (
-            <Form
-              form={academicForm}
-              layout="vertical"
-              initialValues={{ level: 100 }}
-            >
-              <Row gutter={[16, 16]}>
-                <Col span={24}>
-                  <Form.Item 
-                    label="Level *" 
-                    name="level"
-                    rules={[{ required: true, message: 'Please select level' }]}
-                    help="Required for course filtering in attendance"
-                  >
-                    <Select 
-                      placeholder="Select level" 
-                      size="large"
-                      options={levels.map(level => ({
-                        value: level.value,
-                        label: level.label
-                      }))}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <Row gutter={[16, 16]}>
-                <Col span={24}>
-                  <Form.Item 
-                    label="Program *" 
-                    name="program_id"
-                    rules={[{ required: true, message: 'Please select program' }]}
-                    help="Required for attendance reporting"
-                  >
-                    <Select 
-                      placeholder="Select program" 
-                      size="large"
-                      showSearch
-                      filterOption={(input, option) =>
-                        (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
-                      }
-                      options={programs.map(program => ({
-                        value: program.id,
-                        label: `${program.code} - ${program.name}${program.short_name ? ` (${program.short_name})` : ''}`,
-                      }))}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-
-              <div style={{ marginTop: 30, textAlign: 'center' }}>
-                <Alert
-                  type="warning"
-                  message="Important for Attendance"
-                  description="Level and Program information are required for attendance tracking and reporting. These cannot be changed easily after enrollment."
-                  showIcon
-                />
-              </div>
-            </Form>
-          )}
+          </Form>
         </div>
       ),
     },
@@ -718,24 +626,25 @@ const EnrollmentPage: React.FC = () => {
               </Title>
               
               <Card style={{ maxWidth: 500, margin: '20px auto', textAlign: 'left' }}>
-                <Title level={4}>Student Summary</Title>
-                <p><strong>Name:</strong> {enrollmentResult.student?.name}</p>
-                <p><strong>Student ID:</strong> 
+                <Title level={4}>Staff Summary</Title>
+                <p><strong>Name:</strong> {enrollmentResult.staff?.name}</p>
+                <p><strong>Staff ID:</strong> 
                   <Tag color="blue" style={{ marginLeft: 8 }}>
-                    {enrollmentResult.student?.student_id}
+                    {enrollmentResult.staff?.staff_id}
                   </Tag>
                 </p>
-                <p><strong>Matric Number:</strong> 
-                  <Tag color="green" style={{ marginLeft: 8 }}>
-                    {enrollmentResult.student?.matric_number}
+                <p><strong>Department:</strong> 
+                  <Tag 
+                    color="blue" 
+                    style={{ 
+                      marginLeft: 8,
+                      backgroundColor: enrollmentResult.departmentColor || '#1890ff',
+                      color: 'white'
+                    }}
+                  >
+                    {enrollmentResult.department?.toUpperCase()}
                   </Tag>
                 </p>
-                <p><strong>Level:</strong> 
-                  <Tag color="purple" style={{ marginLeft: 8 }}>
-                    Level {enrollmentResult.level}
-                  </Tag>
-                </p>
-                <p><strong>Program:</strong> {enrollmentResult.program}</p>
                 <p><strong>Status:</strong> <Tag color="success">Enrolled</Tag></p>
                 <p><strong>Face Data:</strong> 
                   <Tag color={enrollmentResult?.faceCaptured ? "green" : "orange"} style={{ marginLeft: 8 }}>
@@ -749,7 +658,7 @@ const EnrollmentPage: React.FC = () => {
                 </p>
                 <p><strong>Verification:</strong> 
                   <Tag color={enrollmentResult?.verification?.embeddingPresent ? "green" : "red"} style={{ marginLeft: 8 }}>
-                    {enrollmentResult?.verification?.embeddingPresent ? `Verified (${enrollmentResult?.verification?.embeddingLength} values)` : 'Not Verified'}
+                    {enrollmentResult?.verification?.embeddingPresent ? 'Verified ✓' : 'Not Verified'}
                   </Tag>
                 </p>
                 <p><strong>Local Storage:</strong> 
@@ -764,7 +673,7 @@ const EnrollmentPage: React.FC = () => {
                     <p><strong>Captured Photo:</strong></p>
                     <img 
                       src={enrollmentResult.photoUrl} 
-                      alt="Student" 
+                      alt="Staff" 
                       style={{ 
                         maxWidth: '150px', 
                         borderRadius: '8px',
@@ -796,7 +705,7 @@ const EnrollmentPage: React.FC = () => {
               {enrollmentResult?.status === 'pending' && (
                 <Alert
                   message="Next Steps"
-                  description="The student was saved but needs face embedding. You can retry face enrollment from the student management page."
+                  description="The staff was saved but needs face embedding. You can retry face enrollment from the staff management page."
                   type="info"
                   showIcon
                   style={{ maxWidth: 500, margin: '20px auto' }}
@@ -810,40 +719,35 @@ const EnrollmentPage: React.FC = () => {
               type="primary"
               size="large"
               onClick={() => {
-                // Generate new matric number for next student
-                const newMatric = generateMatricNumber();
-                setMatricNumber(newMatric);
-                form.setFieldValue('matric_number', newMatric);
+                // Generate new staff ID for next staff
+                const newStaffId = generateStaffId();
+                setStaffId(newStaffId);
+                form.setFieldValue('staff_id', newStaffId);
                 
                 setCurrentStep(0);
                 setEnrollmentComplete(false);
                 setEnrollmentResult(null);
                 form.resetFields();
-                academicForm.resetFields();
-                setStudentData({});
+                departmentForm.resetFields();
+                setStaffData({});
                 setIsCameraActive(false);
                 
                 // Reset to initial values
                 form.setFieldsValue({
                   gender: 'male',
-                  matric_number: newMatric
-                });
-                
-                // Reset academic form
-                academicForm.setFieldsValue({
-                  level: 100
+                  staff_id: newStaffId
                 });
               }}
             >
-              {enrollmentResult?.success ? 'Enroll Another Student' : 'Try Again'}
+              {enrollmentResult?.success ? 'Enroll Another Staff' : 'Try Again'}
             </Button>
             {enrollmentResult?.success && (
               <>
                 <Button 
                   size="large"
-                  onClick={() => window.location.href = '/students'}
+                  onClick={() => window.location.href = '/staff'}
                 >
-                  View All Students
+                  View All Staff
                 </Button>
                 <Button 
                   size="large"
@@ -866,18 +770,18 @@ const EnrollmentPage: React.FC = () => {
             style={{ marginBottom: 20 }}
           />
           
-          {studentData.name && (
+          {staffData.name && (
             <Card style={{ marginBottom: 20, maxWidth: 600, margin: '0 auto 20px' }}>
               <Row gutter={[16, 16]}>
                 <Col span={8}>
-                  <Text strong>Student: </Text>
+                  <Text strong>Staff: </Text>
                   <br />
-                  <Text>{studentData.name}</Text>
+                  <Text>{staffData.name}</Text>
                 </Col>
                 <Col span={8}>
-                  <Text strong>Student ID: </Text>
+                  <Text strong>Staff ID: </Text>
                   <br />
-                  <Tag color="blue">{matricNumber}</Tag>
+                  <Tag color="blue">{staffId}</Tag>
                 </Col>
                 <Col span={8}>
                   <Text strong>Status: </Text>
@@ -885,19 +789,21 @@ const EnrollmentPage: React.FC = () => {
                   <Tag color="orange">Pending Face Enrollment</Tag>
                 </Col>
               </Row>
-              {studentData.level && (
+              {staffData.department && (
                 <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-                  <Col span={12}>
-                    <Text strong>Level: </Text>
+                  <Col span={24}>
+                    <Text strong>Department: </Text>
                     <br />
-                    <Tag color="purple">Level {studentData.level}</Tag>
-                  </Col>
-                  <Col span={12}>
-                    <Text strong>Program: </Text>
-                    <br />
-                    <Text>
-                      {programs.find(p => p.id === studentData.program_id)?.name || 'Not selected'}
-                    </Text>
+                    <Tag 
+                      color="blue" 
+                      style={{ 
+                        marginTop: '8px',
+                        backgroundColor: departments.find(d => d.value === staffData.department)?.color || '#1890ff',
+                        color: 'white'
+                      }}
+                    >
+                      {staffData.department?.toUpperCase()}
+                    </Tag>
                   </Col>
                 </Row>
               )}
@@ -908,12 +814,11 @@ const EnrollmentPage: React.FC = () => {
             {isCameraActive ? (
               <FaceCamera
                 mode="enrollment"
-                student={{
-                  id: studentData.matric_number || matricNumber,
-                  name: studentData.name,
-                  matric_number: studentData.matric_number || matricNumber,
-                  level: studentData.level,
-                  program_id: studentData.program_id
+                staff={{
+                  id: staffData.staff_id || staffId,
+                  name: staffData.name,
+                  staff_id: staffData.staff_id || staffId,
+                  department: staffData.department
                 }}
                 onEnrollmentComplete={handleEnrollmentComplete}
               />
@@ -959,9 +864,9 @@ const EnrollmentPage: React.FC = () => {
 
   return (
     <div style={{ padding: '20px' }}>
-      <Title level={2}>Student Face Enrollment</Title>
+      <Title level={2}>Staff Face Enrollment</Title>
       <Text type="secondary">
-        AFE Babalola University - Biometric Face Enrollment System
+        Nigeram Ventures - Biometric Staff Enrollment System
       </Text>
 
       <Card style={{ marginTop: 20 }}>

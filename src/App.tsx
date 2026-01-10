@@ -70,8 +70,8 @@ const HomeCards = () => {
   const cards = [
     {
       key: 'enroll',
-      title: 'Student Enrollment',
-      description: 'Enroll new students with face recognition',
+      title: 'Staff Enrollment',
+      description: 'Enroll new staff with face recognition',
       icon: <UserPlus size={32} />,
       path: '/enroll',
       color: '#1890ff',
@@ -171,7 +171,7 @@ const HomeCards = () => {
         textAlign: 'center' 
       }}>
         <Text type="secondary" style={{ fontSize: '12px' }}>
-          AFE Babalola University • Face Authentication System
+          Nigeram Staff • Face Authentication System
         </Text>
       </div>
     </div>

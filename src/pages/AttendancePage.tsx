@@ -1,4 +1,4 @@
-// src/pages/AttendancePage.tsx - FUTURISTIC BLUE DESIGN
+// src/pages/AttendancePage.tsx - NIGERAM STAFF VERSION
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Select,
@@ -22,9 +22,16 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 
 const AttendancePage: React.FC = () => {
-  const [courses, setCourses] = useState<any[]>([]);
-  const [selectedCourse, setSelectedCourse] = useState<string>('');
-  const [selectedCourseData, setSelectedCourseData] = useState<any>(null);
+  // Changed from courses to departments
+  const [departments, setDepartments] = useState<any[]>([
+    { id: 'studio', code: 'STU', name: 'Studio' },
+    { id: 'logistics', code: 'LOG', name: 'Logistics' },
+    { id: 'bakery', code: 'BAK', name: 'Bakery' },
+    { id: 'spa', code: 'SPA', name: 'Spa' },
+  ]);
+  
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('');
+  const [selectedDepartmentData, setSelectedDepartmentData] = useState<any>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [faceModelsLoaded, setFaceModelsLoaded] = useState(false);
   const [lastScanResult, setLastScanResult] = useState<any>(null);
@@ -34,35 +41,20 @@ const AttendancePage: React.FC = () => {
   const [alreadyMarkedScans, setAlreadyMarkedScans] = useState(0);
   
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const markedStudentsRef = useRef<Set<string>>(new Set());
+  const markedStaffRef = useRef<Set<string>>(new Set()); // Changed from students to staff
 
-  // Fetch courses
-  const fetchCourses = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('courses')
-        .select('*')
-        .order('code');
-      
-      if (error) throw error;
-      setCourses(data || []);
-    } catch (error: any) {
-      console.error('Error fetching courses:', error);
-    }
-  };
-
-  // Check if student already marked attendance today
-  const checkExistingAttendance = async (studentId: string): Promise<boolean> => {
-    if (!selectedCourseData) return false;
+  // Check if staff already marked attendance today
+  const checkExistingAttendance = async (staffId: string): Promise<boolean> => {
+    if (!selectedDepartmentData) return false;
     
     try {
       const attendanceDate = dayjs().format('YYYY-MM-DD');
       
       const { data, error } = await supabase
-        .from('student_attendance')
+        .from('staff_attendance') // Changed table
         .select('id')
-        .eq('student_id', studentId)
-        .eq('course_code', selectedCourseData.code)
+        .eq('staff_id', staffId) // Changed field
+        .eq('department', selectedDepartmentData.id) // Changed field
         .eq('attendance_date', attendanceDate)
         .maybeSingle();
       
@@ -75,47 +67,43 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  // Record Attendance
-  const recordAttendance = async (studentData: any, confidence: number) => {
+  // Record Attendance for Staff
+  const recordAttendance = async (staffData: any, confidence: number) => {
     try {
       const attendanceDate = dayjs().format('YYYY-MM-DD');
       
       // Check if already marked in database
-      const alreadyMarked = await checkExistingAttendance(studentData.student_id);
+      const alreadyMarked = await checkExistingAttendance(staffData.staff_id);
       if (alreadyMarked) {
         return { success: false, alreadyMarked: true };
       }
       
       // Check if already marked in this session
-      const studentKey = `${studentData.student_id}-${selectedCourseData.code}-${attendanceDate}`;
-      if (markedStudentsRef.current.has(studentKey)) {
+      const staffKey = `${staffData.staff_id}-${selectedDepartmentData.id}-${attendanceDate}`;
+      if (markedStaffRef.current.has(staffKey)) {
         return { success: false, alreadyMarked: true };
       }
 
       const attendanceData = {
-        student_id: studentData.student_id,
-        student_name: studentData.name,
-        matric_number: studentData.matric_number,
-        course_code: selectedCourseData.code,
-        course_title: selectedCourseData.title,
-        level: studentData.level || selectedCourseData.level,
+        staff_id: staffData.staff_id, // Changed field
+        staff_name: staffData.name, // Changed field
+        department: selectedDepartmentData.id, // Changed field
         attendance_date: attendanceDate,
         check_in_time: new Date().toISOString(),
         status: 'present',
         verification_method: 'face_recognition',
         confidence_score: confidence,
-        score: 2.00,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       };
       
       const { error } = await supabase
-        .from('student_attendance')
+        .from('staff_attendance') // Changed table
         .insert([attendanceData]);
       
       if (error) throw error;
       
-      markedStudentsRef.current.add(studentKey);
+      markedStaffRef.current.add(staffKey);
       
       return { success: true, alreadyMarked: false };
       
@@ -125,9 +113,9 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  // Handle face detection
+  // Handle face detection - UPDATED for staff
   const handleFaceDetection = async (result: any) => {
-    if (!result.success || !result.photoUrl || isProcessing || !selectedCourseData) return;
+    if (!result.success || !result.photoUrl || isProcessing || !selectedDepartmentData) return;
     
     setIsProcessing(true);
     setScanCount(prev => prev + 1);
@@ -145,15 +133,15 @@ const AttendancePage: React.FC = () => {
       
       const bestMatch = matches[0];
       
-      // Get student data
-      const { data: studentData } = await supabase
-        .from('students')
+      // Get staff data - UPDATED for staff
+      const { data: staffData } = await supabase
+        .from('staff') // Changed table
         .select('*')
-        .eq('student_id', bestMatch.studentId)
-        .eq('enrollment_status', 'enrolled')
+        .eq('staff_id', bestMatch.staffId) // Changed field
+        .eq('employment_status', 'active') // Changed field
         .maybeSingle();
       
-      if (!studentData) {
+      if (!staffData) {
         setLastScanResult({ 
           success: false,
           type: 'not_enrolled'
@@ -161,25 +149,25 @@ const AttendancePage: React.FC = () => {
         return;
       }
       
-      // Record attendance
-      const attendanceResult = await recordAttendance(studentData, bestMatch.confidence);
+      // Record attendance - UPDATED for staff
+      const attendanceResult = await recordAttendance(staffData, bestMatch.confidence);
       
       if (attendanceResult.alreadyMarked) {
         setLastScanResult({
           success: false,
           type: 'already_marked',
-          student: {
-            name: studentData.name,
-            matric_number: studentData.matric_number
+          staff: { // Changed from student to staff
+            name: staffData.name,
+            staff_id: staffData.staff_id // Changed field
           }
         });
         setAlreadyMarkedScans(prev => prev + 1);
       } else if (attendanceResult.success) {
         setLastScanResult({
           success: true,
-          student: {
-            name: studentData.name,
-            matric_number: studentData.matric_number
+          staff: { // Changed from student to staff
+            name: staffData.name,
+            staff_id: staffData.staff_id // Changed field
           }
         });
         setSuccessfulScans(prev => prev + 1);
@@ -216,41 +204,33 @@ const AttendancePage: React.FC = () => {
     }
     setIsCameraActive(true);
     setLastScanResult(null);
-    markedStudentsRef.current.clear();
-  };
-
-  // Stop scanning
-  const stopScanning = () => {
-    setIsCameraActive(false);
-    if (scanTimeoutRef.current) {
-      clearTimeout(scanTimeoutRef.current);
-    }
+    markedStaffRef.current.clear(); // Changed from students
   };
 
   // Reset scanner
   const resetScanner = () => {
     setIsCameraActive(false);
     setLastScanResult(null);
-    setSelectedCourse('');
-    setSelectedCourseData(null);
+    setSelectedDepartment('');
+    setSelectedDepartmentData(null);
     setScanCount(0);
     setSuccessfulScans(0);
     setAlreadyMarkedScans(0);
-    markedStudentsRef.current.clear();
+    markedStaffRef.current.clear(); // Changed from students
     if (scanTimeoutRef.current) {
       clearTimeout(scanTimeoutRef.current);
     }
   };
 
-  // Back to course selection
+  // Back to department selection
   const handleBack = () => {
     setIsCameraActive(false);
-    setSelectedCourse('');
-    setSelectedCourseData(null);
+    setSelectedDepartment('');
+    setSelectedDepartmentData(null);
   };
 
   useEffect(() => {
-    fetchCourses();
+    // No need to fetch departments - using hardcoded ones
     
     const loadModels = async () => {
       try {
@@ -270,12 +250,12 @@ const AttendancePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedCourse) {
-      const course = courses.find(c => c.id === selectedCourse);
-      setSelectedCourseData(course);
-      markedStudentsRef.current.clear();
+    if (selectedDepartment) {
+      const dept = departments.find(d => d.id === selectedDepartment);
+      setSelectedDepartmentData(dept);
+      markedStaffRef.current.clear(); // Changed from students
     }
-  }, [selectedCourse]);
+  }, [selectedDepartment, departments]);
 
   return (
     <div style={{ 
@@ -293,8 +273,8 @@ const AttendancePage: React.FC = () => {
         flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        {/* Course Selection */}
-        {!selectedCourse && (
+        {/* Department Selection */}
+        {!selectedDepartment && (
           <div style={{ 
             textAlign: 'center', 
             flex: 1,
@@ -324,7 +304,7 @@ const AttendancePage: React.FC = () => {
               fontWeight: 600,
               color: '#ffffff'
             }}>
-              SELECT COURSE
+              SELECT DEPARTMENT
             </Text>
             
             <Select
@@ -333,9 +313,9 @@ const AttendancePage: React.FC = () => {
                 maxWidth: 400,
                 marginBottom: 24
               }}
-              placeholder="Choose course..."
-              value={selectedCourse}
-              onChange={setSelectedCourse}
+              placeholder="Choose department..."
+              value={selectedDepartment}
+              onChange={setSelectedDepartment}
               size="large"
               showSearch
               optionFilterProp="label"
@@ -343,16 +323,16 @@ const AttendancePage: React.FC = () => {
                 const label = option?.label?.toString().toLowerCase() || '';
                 return label.includes(input.toLowerCase());
               }}
-              options={courses.map(course => ({
-                value: course.id,
-                label: `${course.code} - ${course.title}`,
+              options={departments.map(dept => ({
+                value: dept.id,
+                label: `${dept.code} - ${dept.name}`,
               }))}
             />
           </div>
         )}
 
-        {/* Course Selected - Ready to Scan */}
-        {selectedCourse && !isCameraActive && selectedCourseData && (
+        {/* Department Selected - Ready to Scan */}
+        {selectedDepartment && !isCameraActive && selectedDepartmentData && (
           <div style={{ 
             textAlign: 'center', 
             flex: 1,
@@ -384,7 +364,15 @@ const AttendancePage: React.FC = () => {
               fontWeight: 700,
               textShadow: '0 0 10px rgba(0, 255, 150, 0.5)'
             }}>
-              {selectedCourseData.code}
+              {selectedDepartmentData.name.toUpperCase()}
+            </Text>
+            
+            <Text style={{ 
+              fontSize: 16, 
+              marginBottom: 32,
+              color: '#aaccff'
+            }}>
+              Staff Attendance
             </Text>
             
             <Button
@@ -399,7 +387,7 @@ const AttendancePage: React.FC = () => {
                 borderRadius: 12,
                 backgroundColor: '#00aaff',
                 border: 'none',
-                marginTop: 32,
+                marginTop: 16,
                 boxShadow: '0 0 20px rgba(0, 170, 255, 0.4)'
               }}
             >
@@ -409,14 +397,14 @@ const AttendancePage: React.FC = () => {
         )}
 
         {/* Active Scanning */}
-        {isCameraActive && selectedCourseData && (
+        {isCameraActive && selectedDepartmentData && (
           <div style={{ 
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
             height: '100%'
           }}>
-            {/* Course Code and Back Button - Top Left */}
+            {/* Department and Back Button - Top Left */}
             <div style={{
               position: 'absolute',
               top: 20,
@@ -444,7 +432,7 @@ const AttendancePage: React.FC = () => {
                 }}
               />
               
-              {/* Course Code Badge */}
+              {/* Department Badge */}
               <div style={{
                 backgroundColor: 'rgba(0, 150, 255, 0.2)',
                 color: '#00aaff',
@@ -458,7 +446,7 @@ const AttendancePage: React.FC = () => {
               }}>
                 <Badge status="processing" color="#00ffaa" />
                 <Text style={{ fontSize: 14, fontWeight: 600 }}>
-                  {selectedCourseData.code}
+                  {selectedDepartmentData.name}
                 </Text>
               </div>
             </div>
@@ -576,7 +564,7 @@ const AttendancePage: React.FC = () => {
                   {lastScanResult.success ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <CheckCircle size={20} />
-                      <span>{lastScanResult.student?.name}</span>
+                      <span>{lastScanResult.staff?.name}</span>
                     </div>
                   ) : lastScanResult.type === 'already_marked' ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

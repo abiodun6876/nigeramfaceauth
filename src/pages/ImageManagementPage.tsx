@@ -1,4 +1,4 @@
-// src/pages/ImageManagementPage.tsx - UPDATED WITH PROPER TYPES
+// src/pages/ImageManagementPage.tsx - NIGERAM STAFF VERSION
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
@@ -21,7 +21,8 @@ import {
   Divider,
   Progress,
   Badge,
-  Upload
+  Upload,
+  Avatar
 } from 'antd';
 import {
   SearchOutlined,
@@ -33,54 +34,38 @@ import {
   CameraOutlined,
   UserOutlined,
   FilterOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  TeamOutlined,
+  ApartmentOutlined
 } from '@ant-design/icons';
-import {
-  Search,
-  Eye,
-  Trash2,
-  Download,
-  Upload as UploadIcon,
-  RefreshCw,
-  Camera,
-  User,
-  Filter,
-  CheckCircle,
-  AlertCircle,
-  Image as ImageIcon,
-  Database,
-  Cloud,
-  Save,
-  FolderOpen
-} from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { Student, FaceEnrollment } from '../types/database';
+import { Staff, StaffFaceEnrollment } from '../types/database';
 
 const { Title, Text } = Typography;
 const { Search: AntdSearch } = Input;
 const { confirm } = Modal;
 
 // Create extended interface for local image tracking
-interface FaceEnrollmentWithLocal extends FaceEnrollment {
+interface StaffFaceEnrollmentWithLocal extends StaffFaceEnrollment {
   has_local_image?: boolean;
   local_storage_key?: string;
 }
 
-interface StudentWithImages extends Student {
-  face_enrollments?: FaceEnrollmentWithLocal[];
+interface StaffWithImages extends Staff {
+  face_enrollments?: StaffFaceEnrollmentWithLocal[];
   enrollment_count?: number;
   last_enrollment?: string;
   image_quality?: number;
 }
 
 // Local storage configuration
-const LOCAL_STORAGE_PREFIX = 'face_images_';
+const LOCAL_STORAGE_PREFIX = 'staff_face_images_';
 
 // Helper functions for local image storage
 const localImageStorage = {
-  saveImage: (studentId: string, imageId: string, imageData: string): void => {
+  saveImage: (staffId: string, imageId: string, imageData: string): void => {
     try {
-      const key = `${LOCAL_STORAGE_PREFIX}${studentId}_${imageId}`;
+      const key = `${LOCAL_STORAGE_PREFIX}${staffId}_${imageId}`;
       // Compress if too large
       if (imageData.length > 100000) { // 100KB limit
         const img = new window.Image();
@@ -121,9 +106,9 @@ const localImageStorage = {
     }
   },
 
-  getImage: (studentId: string, imageId: string): string | null => {
+  getImage: (staffId: string, imageId: string): string | null => {
     try {
-      const key = `${LOCAL_STORAGE_PREFIX}${studentId}_${imageId}`;
+      const key = `${LOCAL_STORAGE_PREFIX}${staffId}_${imageId}`;
       return localStorage.getItem(key);
     } catch (error) {
       console.error('Error getting image from localStorage:', error);
@@ -131,27 +116,27 @@ const localImageStorage = {
     }
   },
 
-  deleteImage: (studentId: string, imageId: string): void => {
+  deleteImage: (staffId: string, imageId: string): void => {
     try {
-      const key = `${LOCAL_STORAGE_PREFIX}${studentId}_${imageId}`;
+      const key = `${LOCAL_STORAGE_PREFIX}${staffId}_${imageId}`;
       localStorage.removeItem(key);
     } catch (error) {
       console.error('Error deleting image from localStorage:', error);
     }
   },
 
-  deleteAllStudentImages: (studentId: string): void => {
+  deleteAllStaffImages: (staffId: string): void => {
     try {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key?.startsWith(`${LOCAL_STORAGE_PREFIX}${studentId}_`)) {
+        if (key?.startsWith(`${LOCAL_STORAGE_PREFIX}${staffId}_`)) {
           keysToRemove.push(key);
         }
       }
       keysToRemove.forEach(key => localStorage.removeItem(key));
     } catch (error) {
-      console.error('Error deleting student images:', error);
+      console.error('Error deleting staff images:', error);
     }
   },
 
@@ -186,28 +171,42 @@ const localImageStorage = {
   }
 };
 
+// Get department color
+const getDepartmentColor = (dept: string) => {
+  const colors: Record<string, string> = {
+    studio: '#00aaff',
+    logistics: '#00ffaa',
+    bakery: '#ffaa00',
+    spa: '#9b59b6'
+  };
+  return colors[dept] || '#1890ff';
+};
+
 const ImageManagementPage: React.FC = () => {
-  const [students, setStudents] = useState<StudentWithImages[]>([]);
-  const [filteredStudents, setFilteredStudents] = useState<StudentWithImages[]>([]);
+  const [staff, setStaff] = useState<StaffWithImages[]>([]);
+  const [filteredStaff, setFilteredStaff] = useState<StaffWithImages[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState<StudentWithImages | null>(null);
+  const [selectedStaff, setSelectedStaff] = useState<StaffWithImages | null>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
-  const [selectedImage, setSelectedImage] = useState<FaceEnrollmentWithLocal | null>(null);
+  const [selectedImage, setSelectedImage] = useState<StaffFaceEnrollmentWithLocal | null>(null);
   const [storageUsage, setStorageUsage] = useState({ used: 0, total: 0, imageCount: 0, percentage: 0 });
   const [importLoading, setImportLoading] = useState(false);
   const [filters, setFilters] = useState({
-    has_images: 'all' as 'all' | 'yes' | 'no' | 'local'
+    has_images: 'all' as 'all' | 'yes' | 'no' | 'local',
+    department: '' as string | ''
   });
 
-  const fetchStudentsWithImages = useCallback(async () => {
+  const departments = ['studio', 'logistics', 'bakery', 'spa'];
+
+  const fetchStaffWithImages = useCallback(async () => {
     try {
       setLoading(true);
       
-      // Fetch students with their face enrollments
-      const { data: studentsData, error: studentsError } = await supabase
-        .from('students')
+      // Fetch staff with their face enrollments
+      const { data: staffData, error: staffError } = await supabase
+        .from('staff')
         .select(`
           *,
           face_enrollments(*)
@@ -215,14 +214,14 @@ const ImageManagementPage: React.FC = () => {
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
-      if (studentsError) throw studentsError;
+      if (staffError) throw staffError;
 
-      // Process students to add image metadata
-      const processedStudents: StudentWithImages[] = (studentsData || []).map(student => {
+      // Process staff to add image metadata
+      const processedStaff: StaffWithImages[] = (staffData || []).map(staffMember => {
         // Check each enrollment for local images
-        const enrollmentsWithLocalImages: FaceEnrollmentWithLocal[] = 
-          (student.face_enrollments || []).map(enrollment => {
-            const localImageKey = `${LOCAL_STORAGE_PREFIX}${student.id}_${enrollment.id}`;
+        const enrollmentsWithLocalImages: StaffFaceEnrollmentWithLocal[] = 
+          (staffMember.face_enrollments || []).map(enrollment => {
+            const localImageKey = `${LOCAL_STORAGE_PREFIX}${staffMember.id}_${enrollment.id}`;
             const hasLocalImage = !!localStorage.getItem(localImageKey);
             const localImageUrl = localStorage.getItem(localImageKey);
             
@@ -236,7 +235,7 @@ const ImageManagementPage: React.FC = () => {
           });
 
         return {
-          ...student,
+          ...staffMember,
           face_enrollments: enrollmentsWithLocalImages,
           enrollment_count: enrollmentsWithLocalImages.length,
           last_enrollment: enrollmentsWithLocalImages[0]?.enrolled_at,
@@ -244,91 +243,96 @@ const ImageManagementPage: React.FC = () => {
         };
       });
 
-      setStudents(processedStudents);
-      setFilteredStudents(processedStudents);
+      setStaff(processedStaff);
+      setFilteredStaff(processedStaff);
       
       // Update storage usage
       const storageInfo = localImageStorage.getStorageUsage();
       setStorageUsage(storageInfo);
       
     } catch (error) {
-      console.error('Error fetching students with images:', error);
-      message.error('Failed to load student images');
+      console.error('Error fetching staff with images:', error);
+      message.error('Failed to load staff images');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchStudentsWithImages();
-  }, [fetchStudentsWithImages]);
+    fetchStaffWithImages();
+  }, [fetchStaffWithImages]);
 
   useEffect(() => {
-    let result = students;
+    let result = staff;
     
     // Apply search filter
     if (searchText) {
-      result = result.filter(student =>
-        student.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-        student.matric_number?.toLowerCase().includes(searchText.toLowerCase()) ||
-        student.email?.toLowerCase().includes(searchText.toLowerCase())
+      result = result.filter(staffMember =>
+        staffMember.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+        staffMember.staff_id?.toLowerCase().includes(searchText.toLowerCase()) ||
+        staffMember.email?.toLowerCase().includes(searchText.toLowerCase())
       );
+    }
+    
+    // Apply department filter
+    if (filters.department) {
+      result = result.filter(staffMember => staffMember.department === filters.department);
     }
     
     // Apply image filters
     if (filters.has_images !== 'all') {
       switch (filters.has_images) {
         case 'yes':
-          result = result.filter(student => (student.enrollment_count || 0) > 0);
+          result = result.filter(staffMember => (staffMember.enrollment_count || 0) > 0);
           break;
         case 'no':
-          result = result.filter(student => (student.enrollment_count || 0) === 0);
+          result = result.filter(staffMember => (staffMember.enrollment_count || 0) === 0);
           break;
         case 'local':
-          result = result.filter(student => 
-            student.face_enrollments?.some(img => img.has_local_image)
+          result = result.filter(staffMember => 
+            staffMember.face_enrollments?.some(img => img.has_local_image)
           );
           break;
       }
     }
     
-    setFilteredStudents(result);
-  }, [searchText, filters, students]);
+    setFilteredStaff(result);
+  }, [searchText, filters, staff]);
 
   const handleSearch = (value: string) => {
     setSearchText(value);
   };
 
-  const handlePreview = (imageUrl: string, image?: FaceEnrollmentWithLocal) => {
+  const handlePreview = (imageUrl: string, image?: StaffFaceEnrollmentWithLocal) => {
     setPreviewImage(imageUrl);
     setSelectedImage(image || null);
     setPreviewVisible(true);
   };
 
-  const handleViewStudentImages = (student: StudentWithImages) => {
-    setSelectedStudent(student);
+  const handleViewStaffImages = (staffMember: StaffWithImages) => {
+    setSelectedStaff(staffMember);
   };
 
-  const handleDeleteImage = async (studentId: string, imageId: string) => {
+  const handleDeleteImage = async (staffId: string, imageId: string) => {
     try {
       // Delete from database
       const { error } = await supabase
-        .from('face_enrollments')
+        .from('staff_face_enrollments')
         .delete()
         .eq('id', imageId);
 
       if (error) throw error;
 
       // Delete from localStorage
-      localImageStorage.deleteImage(studentId, imageId);
+      localImageStorage.deleteImage(staffId, imageId);
       
       message.success('Image deleted successfully');
-      fetchStudentsWithImages();
+      fetchStaffWithImages();
       
-      // Refresh selected student if viewing their images
-      if (selectedStudent?.id === studentId) {
-        const updatedStudent = await fetchStudentDetails(studentId);
-        setSelectedStudent(updatedStudent);
+      // Refresh selected staff if viewing their images
+      if (selectedStaff?.id === staffId) {
+        const updatedStaff = await fetchStaffDetails(staffId);
+        setSelectedStaff(updatedStaff);
       }
     } catch (error) {
       console.error('Error deleting image:', error);
@@ -336,23 +340,23 @@ const ImageManagementPage: React.FC = () => {
     }
   };
 
-  const fetchStudentDetails = async (studentId: string) => {
+  const fetchStaffDetails = async (staffId: string) => {
     try {
       const { data, error } = await supabase
-        .from('students')
+        .from('staff')
         .select(`
           *,
           face_enrollments(*)
         `)
-        .eq('id', studentId)
+        .eq('id', staffId)
         .single();
 
       if (error) throw error;
       
       // Check for local images
-      const enrollmentsWithLocalImages: FaceEnrollmentWithLocal[] = 
-        (data.face_enrollments || []).map((enrollment: FaceEnrollment) => {
-          const localImageKey = `${LOCAL_STORAGE_PREFIX}${studentId}_${enrollment.id}`;
+      const enrollmentsWithLocalImages: StaffFaceEnrollmentWithLocal[] = 
+        (data.face_enrollments || []).map((enrollment: StaffFaceEnrollment) => {
+          const localImageKey = `${LOCAL_STORAGE_PREFIX}${staffId}_${enrollment.id}`;
           const hasLocalImage = !!localStorage.getItem(localImageKey);
           const localImageUrl = localStorage.getItem(localImageKey);
           
@@ -368,17 +372,17 @@ const ImageManagementPage: React.FC = () => {
         ...data,
         face_enrollments: enrollmentsWithLocalImages,
         enrollment_count: enrollmentsWithLocalImages.length
-      } as StudentWithImages;
+      } as StaffWithImages;
     } catch (error) {
-      console.error('Error fetching student details:', error);
+      console.error('Error fetching staff details:', error);
       return null;
     }
   };
 
-  const handleDeleteAllImages = async (studentId: string) => {
+  const handleDeleteAllImages = async (staffId: string) => {
     confirm({
       title: 'Delete All Images',
-      content: 'Are you sure you want to delete all face images for this student? This will delete from both database and local storage.',
+      content: 'Are you sure you want to delete all face images for this staff member? This will delete from both database and local storage.',
       icon: <ExclamationCircleOutlined />,
       okText: 'Yes, Delete All',
       okType: 'danger',
@@ -387,18 +391,18 @@ const ImageManagementPage: React.FC = () => {
         try {
           // Delete from database
           const { error } = await supabase
-            .from('face_enrollments')
+            .from('staff_face_enrollments')
             .delete()
-            .eq('student_id', studentId);
+            .eq('staff_id', staffId);
 
           if (error) throw error;
 
           // Delete from localStorage
-          localImageStorage.deleteAllStudentImages(studentId);
+          localImageStorage.deleteAllStaffImages(staffId);
           
           message.success('All images deleted successfully');
-          fetchStudentsWithImages();
-          setSelectedStudent(null);
+          fetchStaffWithImages();
+          setSelectedStaff(null);
         } catch (error) {
           console.error('Error deleting all images:', error);
           message.error('Failed to delete images');
@@ -407,9 +411,9 @@ const ImageManagementPage: React.FC = () => {
     });
   };
 
-  const handleReEnrollStudent = (student: StudentWithImages) => {
-    // Redirect to enrollment page with student data
-    const enrollmentUrl = `/enroll?studentId=${student.id}`;
+  const handleReEnrollStaff = (staffMember: StaffWithImages) => {
+    // Redirect to enrollment page with staff data
+    const enrollmentUrl = `/enroll?staffId=${staffMember.id}`;
     window.location.href = enrollmentUrl;
   };
 
@@ -417,20 +421,21 @@ const ImageManagementPage: React.FC = () => {
     try {
       const exportData: any = {};
       
-      students.forEach(student => {
-        if (student.face_enrollments) {
-          student.face_enrollments.forEach(enrollment => {
+      staff.forEach(staffMember => {
+        if (staffMember.face_enrollments) {
+          staffMember.face_enrollments.forEach(enrollment => {
             if (enrollment.has_local_image && enrollment.local_storage_key) {
               const imageData = localStorage.getItem(enrollment.local_storage_key);
               if (imageData) {
-                if (!exportData[student.id]) {
-                  exportData[student.id] = {
-                    name: student.name,
-                    matric_number: student.matric_number,
+                if (!exportData[staffMember.id]) {
+                  exportData[staffMember.id] = {
+                    name: staffMember.name,
+                    staff_id: staffMember.staff_id,
+                    department: staffMember.department,
                     images: {}
                   };
                 }
-                exportData[student.id].images[enrollment.id] = {
+                exportData[staffMember.id].images[enrollment.id] = {
                   imageData,
                   quality_score: enrollment.quality_score,
                   enrolled_at: enrollment.enrolled_at,
@@ -446,13 +451,13 @@ const ImageManagementPage: React.FC = () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `face_images_export_${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `staff_face_images_export_${new Date().toISOString().split('T')[0]}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      message.success(`Exported ${Object.keys(exportData).length} students' images`);
+      message.success(`Exported ${Object.keys(exportData).length} staff members' images`);
     } catch (error) {
       console.error('Error exporting images:', error);
       message.error('Failed to export images');
@@ -468,18 +473,18 @@ const ImageManagementPage: React.FC = () => {
           const importData = JSON.parse(e.target?.result as string);
           let importedCount = 0;
           
-          Object.keys(importData).forEach(studentId => {
-            const studentData = importData[studentId];
-            Object.keys(studentData.images).forEach(imageId => {
-              const imageInfo = studentData.images[imageId];
-              const key = `${LOCAL_STORAGE_PREFIX}${studentId}_${imageId}`;
+          Object.keys(importData).forEach(staffId => {
+            const staffData = importData[staffId];
+            Object.keys(staffData.images).forEach(imageId => {
+              const imageInfo = staffData.images[imageId];
+              const key = `${LOCAL_STORAGE_PREFIX}${staffId}_${imageId}`;
               localStorage.setItem(key, imageInfo.imageData);
               importedCount++;
             });
           });
           
           message.success(`Imported ${importedCount} images`);
-          fetchStudentsWithImages();
+          fetchStaffWithImages();
         } catch (error) {
           console.error('Error parsing import file:', error);
           message.error('Invalid import file format');
@@ -494,12 +499,12 @@ const ImageManagementPage: React.FC = () => {
     }
   };
 
-  const handleDownloadImage = (studentId: string, imageId: string, imageData: string) => {
+  const handleDownloadImage = (staffId: string, imageId: string, imageData: string) => {
     try {
       // Create download link
       const link = document.createElement('a');
       link.href = imageData;
-      link.download = `face_${studentId}_${imageId}.jpg`;
+      link.download = `staff_face_${staffId}_${imageId}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -528,40 +533,55 @@ const ImageManagementPage: React.FC = () => {
         }
         keysToRemove.forEach(key => localStorage.removeItem(key));
         message.success('All local images cleared');
-        fetchStudentsWithImages();
+        fetchStaffWithImages();
       }
     });
   };
 
   const columns = [
     {
-      title: 'Student',
+      title: 'Staff',
       dataIndex: 'name',
       key: 'name',
-      render: (text: string, record: StudentWithImages) => (
+      render: (text: string, record: StaffWithImages) => (
         <Space>
-          <User size={16} style={{ color: '#1890ff' }} />
+          <Avatar 
+            size="small" 
+            style={{ 
+              backgroundColor: getDepartmentColor(record.department),
+              color: 'white'
+            }}
+          >
+            {text.charAt(0)}
+          </Avatar>
           <div>
             <Text strong>{text}</Text>
             <br />
             <Text type="secondary" style={{ fontSize: '12px' }}>
-              {record.matric_number}
+              {record.staff_id}
             </Text>
           </div>
         </Space>
       ),
     },
     {
-      title: 'Program',
-      dataIndex: 'program_name',
-      key: 'program',
-      render: (text: string) => text || 'N/A',
+      title: 'Department',
+      dataIndex: 'department',
+      key: 'department',
+      render: (dept: string) => (
+        <Tag 
+          color={getDepartmentColor(dept)}
+          style={{ color: 'white', fontWeight: 500 }}
+        >
+          {dept.toUpperCase()}
+        </Tag>
+      ),
     },
     {
       title: 'Face Images',
       dataIndex: 'enrollment_count',
       key: 'images',
-      render: (count: number, record: StudentWithImages) => {
+      render: (count: number, record: StaffWithImages) => {
         const localCount = record.face_enrollments?.filter(img => img.has_local_image).length || 0;
         return (
           <Tooltip title={`${localCount} local / ${count} total`}>
@@ -585,28 +605,38 @@ const ImageManagementPage: React.FC = () => {
       render: (date: string) => date ? new Date(date).toLocaleDateString() : 'Never',
     },
     {
+      title: 'Status',
+      dataIndex: 'employment_status',
+      key: 'status',
+      render: (status: string) => (
+        <Tag color={status === 'active' ? 'success' : 'warning'}>
+          {status.toUpperCase()}
+        </Tag>
+      ),
+    },
+    {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: StudentWithImages) => (
+      render: (_: any, record: StaffWithImages) => (
         <Space>
           <Tooltip title="View Images">
             <Button
               type="text"
-              icon={<Eye size={16} />}
-              onClick={() => handleViewStudentImages(record)}
+              icon={<EyeOutlined />}
+              onClick={() => handleViewStaffImages(record)}
               disabled={!record.enrollment_count}
             />
           </Tooltip>
           <Tooltip title="Re-enroll Face">
             <Button
               type="text"
-              icon={<Camera size={16} />}
-              onClick={() => handleReEnrollStudent(record)}
+              icon={<CameraOutlined />}
+              onClick={() => handleReEnrollStaff(record)}
             />
           </Tooltip>
           {record.enrollment_count ? (
             <Popconfirm
-              title="Delete all images for this student?"
+              title="Delete all images for this staff member?"
               onConfirm={() => handleDeleteAllImages(record.id)}
               okText="Yes"
               cancelText="No"
@@ -615,7 +645,7 @@ const ImageManagementPage: React.FC = () => {
                 <Button
                   type="text"
                   danger
-                  icon={<Trash2 size={16} />}
+                  icon={<DeleteOutlined />}
                 />
               </Tooltip>
             </Popconfirm>
@@ -630,7 +660,7 @@ const ImageManagementPage: React.FC = () => {
       title: 'Preview',
       dataIndex: 'photo_url',
       key: 'preview',
-      render: (url: string, record: FaceEnrollmentWithLocal) => (
+      render: (url: string, record: StaffFaceEnrollmentWithLocal) => (
         <div 
           style={{ 
             width: 60, 
@@ -694,12 +724,12 @@ const ImageManagementPage: React.FC = () => {
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: FaceEnrollmentWithLocal) => (
+      render: (_: any, record: StaffFaceEnrollmentWithLocal) => (
         <Space>
           <Tooltip title="Preview">
             <Button
               type="text"
-              icon={<Eye size={16} />}
+              icon={<EyeOutlined />}
               onClick={() => handlePreview(record.photo_url, record)}
             />
           </Tooltip>
@@ -707,12 +737,12 @@ const ImageManagementPage: React.FC = () => {
             <Tooltip title="Download">
               <Button
                 type="text"
-                icon={<Download size={16} />}
+                icon={<DownloadOutlined />}
                 onClick={() => {
-                  if (selectedStudent) {
+                  if (selectedStaff) {
                     const imageData = localStorage.getItem(record.local_storage_key || '');
                     if (imageData) {
-                      handleDownloadImage(selectedStudent.id, record.id, imageData);
+                      handleDownloadImage(selectedStaff.id, record.id, imageData);
                     }
                   }
                 }}
@@ -722,8 +752,8 @@ const ImageManagementPage: React.FC = () => {
           <Popconfirm
             title="Delete this image?"
             onConfirm={() => {
-              if (selectedStudent) {
-                handleDeleteImage(selectedStudent.id, record.id);
+              if (selectedStaff) {
+                handleDeleteImage(selectedStaff.id, record.id);
               }
             }}
             okText="Yes"
@@ -733,7 +763,7 @@ const ImageManagementPage: React.FC = () => {
               <Button
                 type="text"
                 danger
-                icon={<Trash2 size={16} />}
+                icon={<DeleteOutlined />}
               />
             </Tooltip>
           </Popconfirm>
@@ -746,16 +776,16 @@ const ImageManagementPage: React.FC = () => {
     <div style={{ padding: '20px' }}>
       <Row justify="space-between" align="middle" style={{ marginBottom: 20 }}>
         <Col>
-          <Title level={2}>Image Management</Title>
+          <Title level={2}>Staff Image Management</Title>
           <Text type="secondary">
-            Manage face images stored locally and in database
+            Manage face images for Nigeram staff
           </Text>
         </Col>
         <Col>
           <Space>
             <Button
-              icon={<RefreshCw size={16} />}
-              onClick={fetchStudentsWithImages}
+              icon={<ReloadOutlined />}
+              onClick={fetchStaffWithImages}
               loading={loading}
             >
               Refresh
@@ -767,21 +797,21 @@ const ImageManagementPage: React.FC = () => {
               disabled={importLoading}
             >
               <Button
-                icon={<UploadIcon size={16} />}
+                icon={<UploadOutlined />}
                 loading={importLoading}
               >
                 Import
               </Button>
             </Upload>
             <Button
-              icon={<Download size={16} />}
+              icon={<DownloadOutlined />}
               onClick={handleExportAllImages}
               disabled={storageUsage.imageCount === 0}
             >
               Export
             </Button>
             <Button
-              icon={<FolderOpen size={16} />}
+              icon={<DeleteOutlined />}
               onClick={handleClearLocalStorage}
               danger
               disabled={storageUsage.imageCount === 0}
@@ -804,17 +834,17 @@ const ImageManagementPage: React.FC = () => {
             />
             <Text type="secondary">
               {Math.round(storageUsage.used / 1024)}MB / {Math.round(storageUsage.total / 1024)}MB
-              ({storageUsage.imageCount} images)
+              ({storageUsage.imageCount} staff images)
             </Text>
           </Col>
           <Col xs={24} md={8} style={{ textAlign: 'right' }}>
             <Tag color="blue">
-              <Database size={12} style={{ marginRight: 4 }} />
-              Supabase
+              <TeamOutlined style={{ marginRight: 4 }} />
+              Total Staff: {staff.length}
             </Tag>
             <Tag color="green">
-              <Save size={12} style={{ marginRight: 4 }} />
-              Local Storage
+              <UserOutlined style={{ marginRight: 4 }} />
+              With Images: {staff.filter(s => (s.enrollment_count || 0) > 0).length}
             </Tag>
           </Col>
         </Row>
@@ -823,61 +853,93 @@ const ImageManagementPage: React.FC = () => {
       {/* Search and Filters */}
       <Card style={{ marginBottom: 20 }}>
         <Row gutter={[16, 16]}>
-          <Col xs={24} md={12}>
+          <Col xs={24} md={8}>
             <AntdSearch
-              placeholder="Search by name or matric number"
+              placeholder="Search staff name or ID"
               allowClear
-              enterButton={<Search size={16} />}
+              enterButton={<SearchOutlined />}
               size="large"
               onSearch={handleSearch}
               onChange={(e) => setSearchText(e.target.value)}
             />
           </Col>
-          <Col xs={24} md={12}>
-            <Space>
-              <Select
-                value={filters.has_images}
-                onChange={(value) => setFilters({ has_images: value })}
-                style={{ width: 150 }}
-              >
-                <Select.Option value="all">All Students</Select.Option>
-                <Select.Option value="yes">With Images</Select.Option>
-                <Select.Option value="no">No Images</Select.Option>
-                <Select.Option value="local">Local Storage</Select.Option>
-              </Select>
-              <Button
-                icon={<Filter size={16} />}
-                onClick={() => {
-                  setFilters({ has_images: 'all' });
-                  setSearchText('');
-                }}
-              >
-                Clear Filters
-              </Button>
-            </Space>
+          <Col xs={12} md={6}>
+            <Select
+              placeholder="Department"
+              style={{ width: '100%' }}
+              value={filters.department || undefined}
+              onChange={(value) => setFilters({...filters, department: value})}
+              allowClear
+            >
+              {departments.map(dept => (
+                <Select.Option key={dept} value={dept}>
+                  <Tag color={getDepartmentColor(dept)} style={{ marginRight: 4 }}>
+                    {dept.charAt(0).toUpperCase()}
+                  </Tag>
+                  {dept.toUpperCase()}
+                </Select.Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={12} md={6}>
+            <Select
+              placeholder="Images"
+              style={{ width: '100%' }}
+              value={filters.has_images}
+              onChange={(value) => setFilters({...filters, has_images: value})}
+            >
+              <Select.Option value="all">All Staff</Select.Option>
+              <Select.Option value="yes">With Images</Select.Option>
+              <Select.Option value="no">No Images</Select.Option>
+              <Select.Option value="local">Local Storage</Select.Option>
+            </Select>
+          </Col>
+          <Col xs={24} md={4}>
+            <Button
+              icon={<FilterOutlined />}
+              onClick={() => {
+                setFilters({ has_images: 'all', department: '' });
+                setSearchText('');
+              }}
+              style={{ width: '100%' }}
+            >
+              Clear Filters
+            </Button>
           </Col>
         </Row>
       </Card>
 
       {/* Main Content */}
-      {selectedStudent ? (
+      {selectedStaff ? (
         <Card 
           title={
             <Space>
-              <User size={16} />
-              <Text strong>{selectedStudent.name}</Text>
-              <Text type="secondary">({selectedStudent.matric_number})</Text>
+              <Avatar 
+                style={{ 
+                  backgroundColor: getDepartmentColor(selectedStaff.department),
+                  color: 'white'
+                }}
+              >
+                {selectedStaff.name.charAt(0)}
+              </Avatar>
+              <div>
+                <Text strong>{selectedStaff.name}</Text>
+                <br />
+                <Text type="secondary" style={{ fontSize: '12px' }}>
+                  {selectedStaff.staff_id} • {selectedStaff.department.toUpperCase()}
+                </Text>
+              </div>
             </Space>
           }
           extra={
             <Space>
-              <Button onClick={() => setSelectedStudent(null)}>
+              <Button onClick={() => setSelectedStaff(null)}>
                 Back to List
               </Button>
               <Button
                 type="primary"
-                icon={<Camera size={16} />}
-                onClick={() => handleReEnrollStudent(selectedStudent)}
+                icon={<CameraOutlined />}
+                onClick={() => handleReEnrollStaff(selectedStaff)}
               >
                 Add New Image
               </Button>
@@ -887,12 +949,12 @@ const ImageManagementPage: React.FC = () => {
           <Row gutter={[20, 20]}>
             <Col span={24}>
               <Alert
-                message="Student Face Images"
+                message="Staff Face Images"
                 description={
                   <>
-                    {selectedStudent.face_enrollments?.length || 0} total images
-                    {selectedStudent.face_enrollments?.some(img => img.has_local_image) && 
-                      ` (${selectedStudent.face_enrollments?.filter(img => img.has_local_image).length} stored locally)`}
+                    {selectedStaff.face_enrollments?.length || 0} total images
+                    {selectedStaff.face_enrollments?.some(img => img.has_local_image) && 
+                      ` (${selectedStaff.face_enrollments?.filter(img => img.has_local_image).length} stored locally)`}
                   </>
                 }
                 type="info"
@@ -900,11 +962,11 @@ const ImageManagementPage: React.FC = () => {
               />
             </Col>
             
-            {selectedStudent.face_enrollments && selectedStudent.face_enrollments.length > 0 ? (
+            {selectedStaff.face_enrollments && selectedStaff.face_enrollments.length > 0 ? (
               <Col span={24}>
                 <Table
                   columns={imageColumns}
-                  dataSource={selectedStudent.face_enrollments}
+                  dataSource={selectedStaff.face_enrollments}
                   rowKey="id"
                   pagination={{ pageSize: 5 }}
                 />
@@ -912,13 +974,13 @@ const ImageManagementPage: React.FC = () => {
             ) : (
               <Col span={24}>
                 <Empty
-                  description="No face images found for this student"
+                  description="No face images found for this staff member"
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 >
                   <Button
                     type="primary"
-                    icon={<Camera size={16} />}
-                    onClick={() => handleReEnrollStudent(selectedStudent)}
+                    icon={<CameraOutlined />}
+                    onClick={() => handleReEnrollStaff(selectedStaff)}
                   >
                     Enroll Face Now
                   </Button>
@@ -931,7 +993,7 @@ const ImageManagementPage: React.FC = () => {
         <Card>
           <Table
             columns={columns}
-            dataSource={filteredStudents}
+            dataSource={filteredStaff}
             rowKey="id"
             loading={loading}
             pagination={{ pageSize: 10 }}
@@ -939,10 +1001,10 @@ const ImageManagementPage: React.FC = () => {
             locale={{
               emptyText: (
                 <Empty
-                  description="No students found"
+                  description="No staff members found"
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
                 >
-                  <Text type="secondary">Enroll students to see their face images here</Text>
+                  <Text type="secondary">Enroll staff to see their face images here</Text>
                 </Empty>
               )
             }}
@@ -953,7 +1015,7 @@ const ImageManagementPage: React.FC = () => {
       {/* Image Preview Modal */}
       <Modal
         open={previewVisible}
-        title="Face Image Preview"
+        title="Staff Face Image Preview"
         footer={null}
         onCancel={() => setPreviewVisible(false)}
         width={720}
@@ -964,12 +1026,16 @@ const ImageManagementPage: React.FC = () => {
             alt="Face Preview"
             style={{ maxWidth: '100%', maxHeight: '70vh' }}
           />
-          {selectedImage && (
+          {selectedImage && selectedStaff && (
             <div style={{ marginTop: 20, textAlign: 'left' }}>
               <Divider style={{ margin: '16px 0' }}>
                 <Text strong>Image Details</Text>
               </Divider>
               <Row gutter={[16, 8]}>
+                <Col span={12}>
+                  <Text strong>Staff: </Text>
+                  <Text>{selectedStaff.name}</Text>
+                </Col>
                 <Col span={12}>
                   <Text strong>Storage: </Text>
                   {selectedImage.has_local_image ? (
@@ -977,6 +1043,12 @@ const ImageManagementPage: React.FC = () => {
                   ) : (
                     <Tag color="orange">Database</Tag>
                   )}
+                </Col>
+                <Col span={12}>
+                  <Text strong>Department: </Text>
+                  <Tag color={getDepartmentColor(selectedStaff.department)}>
+                    {selectedStaff.department.toUpperCase()}
+                  </Tag>
                 </Col>
                 <Col span={12}>
                   <Text strong>Quality: </Text>

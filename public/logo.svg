@@ -1,0 +1,31 @@
+<svg width="512" height="512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#051024;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a1a35;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="circleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00aaff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00ffaa;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bgGradient)" rx="100" />
+  
+  <!-- Main circle -->
+  <circle cx="256" cy="256" r="200" fill="url(#circleGradient)" />
+  
+  <!-- Inner circle -->
+  <circle cx="256" cy="256" r="140" fill="#ffffff" />
+  
+  <!-- N Letter -->
+  <text x="256" y="320" 
+        font-family="Arial, sans-serif" 
+        font-size="180" 
+        font-weight="bold" 
+        fill="#0a1a35" 
+        text-anchor="middle">
+    N
+  </text>
+</svg>

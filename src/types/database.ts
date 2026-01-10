@@ -1,24 +1,47 @@
-// src/types/database.ts
+// src/types/database.ts - NIGERAM STAFF VERSION
 
-// Add this at the beginning of the file
-export interface Enrollment {
+// ========== STAFF RELATED TYPES ==========
+export interface Staff {
   id: string;
-  student_id: string;
-  course_id: string;
-  course_code: string;
-  enrollment_date: string;
-  academic_session: string;
-  status: 'active' | 'inactive' | 'dropped';
+  staff_id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  gender?: string;
+  date_of_birth?: string;
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';  // Your specific departments
+  department_name?: string;
+  position?: string;
+  employment_date: string;
+  employment_status: 'active' | 'inactive' | 'terminated' | 'on_leave';
+  enrollment_status: 'pending' | 'enrolled' | 'verified';
+  
+  // Face recognition data
+  face_embedding?: number[];
+  photo_url?: string;
+  face_enrolled_at?: string;
+  face_match_threshold?: number;
+  last_face_scan?: string;
+  
+  // Additional fields
+  shift_schedule?: string;
+  salary_grade?: string;
+  supervisor_id?: string;
+  emergency_contact?: string;
+  
+  is_active: boolean;
   created_at: string;
   updated_at: string;
-  student?: Student;
-  course?: Course;
+  
+  // Relationships
+  face_enrollments?: StaffFaceEnrollment[];
+  attendance_records?: StaffAttendanceRecord[];
 }
 
-
-export interface FaceEnrollment {
+export interface StaffFaceEnrollment {
   id: string;
-  student_id: string;
+  staff_id: string;
+  staff?: Staff;
   embedding: number[];
   photo_url: string;
   quality_score: number;
@@ -27,254 +50,148 @@ export interface FaceEnrollment {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  // Add this for local storage tracking
   has_local_image?: boolean;
 }
 
-export interface Student {
-  id: string;
-  student_id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  gender?: string;
-  date_of_birth?: string;
-  faculty_id?: string;
-  faculty_code?: string;
-  faculty?: Faculty;
-  department_id?: string;
-  department_code?: string;
-  department?: Department;
-  program_id?: string;
-  program?: Program;
-  current_level_id?: string;
-  current_level?: Level;
-  current_semester_id?: string;
-  current_semester?: Semester;
-  academic_session_id?: string;
-  academic_session?: AcademicSession;
-  admission_year?: string;
-  year_of_entry?: string;
-  matric_number?: string;
-  program_name?: string;
-  level_code?: string;
-  level?: string | number; // For backward compatibility
-  semester_number?: number;
-  session_year?: string;
-  course_codes?: string[];
-  face_embedding?: number[];
-  photo_url?: string;
-  face_enrolled_at?: string;
-  face_match_threshold?: number;
-  enrollment_status: 'pending' | 'enrolled' | 'verified';
-  last_face_scan?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  // Add relationships
-  enrollments?: Enrollment[];
-  face_enrollments?: FaceEnrollment[];
-}
-
-export interface Lecturer {
+export interface StaffAttendanceRecord {
   id: string;
   staff_id: string;
-  name: string;
-  email?: string;
-  phone?: string;
-  department_id?: string;
-  department?: Department;
-  faculty_id?: string;
-  faculty?: Faculty;
-  title?: string;
-  is_active: boolean;
-  device_id?: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Faculty {
-  id: string;
-  code: string;
-  name: string;
-  description?: string;
-  dean?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Department {
-  id: string;
-  faculty_id: string;
-  faculty?: Faculty;
-  code: string;
-  name: string;
-  hod?: string;
-  description?: string;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Level {
-  id: string;
-  code: string;
-  name: string;
-  description?: string;
-  level_order: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Program {
-  id: string;
-  code: string;
-  name: string;
-  short_name?: string;
-  faculty_id?: string;
-  faculty?: Faculty;
-  department_id?: string;
-  department?: Department;
-  program_type?: 'UNDERGRADUATE' | 'POSTGRADUATE' | 'DIPLOMA' | 'CERTIFICATE';
-  duration_years?: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AcademicSession {
-  id: string;
-  code: string;
-  name: string;
-  session_year: string;
-  start_date: string;
-  end_date: string;
-  is_current: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Semester {
-  id: string;
-  code: string;
-  name: string;
-  academic_session_id?: string;
-  academic_session?: AcademicSession;
-  semester_number: number;
-  start_date: string;
-  end_date: string;
-  is_current: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface Course {
-  id: string;
-  code: string;
-  title: string;
-  department_id: string;
-  department?: Department;
-  level_id?: string;
-  level?: Level;
-  semester_id?: string;
-  semester?: Semester;
-  academic_session_id?: string;
-  academic_session?: AcademicSession;
-  credit_units: number;
-  is_core: boolean;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  enrollments?: Enrollment[];
-}
-
-export interface Event {
-  id: string;
-  name: string;
-  description?: string;
-  type: "class" | "lecture" | "seminar" | "exam" | "practical" | "tutorial" | "meeting" | "workshop";
-  start_time: string;
-  end_time: string;
-  date: string;
-  location?: string;
-  faculty_id?: string;
-  faculty_code?: string;
-  faculty?: Faculty;
-  department_id?: string;
-  department_code?: string;
-  department?: Department;
-  program_id?: string;
-  program?: Program;
-  course_code?: string;
-  course_title?: string;
-  course_id?: string;
-  course?: Course;
-  level_id?: string;
-  level?: Level;
-  lecturer_id?: string;
-  lecturer_name?: string;
-  created_by: string;
-  academic_session_id?: string;
-  academic_session?: AcademicSession;
-  semester_id?: string;
-  semester?: Semester;
-  auto_enroll?: boolean;
-  max_capacity?: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AttendanceRecord {
-  id: string;
-  event_id?: string;
-  session_id?: string;
-  student_id: string;
-  student_name?: string;
-  matric_number?: string;
-  faculty_code?: string;
-  department_code?: string;
-  program?: string;
-  level?: number;
-  student?: Student;
+  staff?: Staff;
+  staff_name?: string;
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';
+  
+  // Check times
   check_in_time: string;
   check_out_time?: string;
   date: string;
-  status: "present" | "absent" | "late" | "excused";
+  
+  // Status and verification
+  status: 'present' | 'absent' | 'late' | 'early_departure' | 'excused';
   verified: boolean;
   device_id: string;
-  synced?: boolean;
+  location?: string;
+  
+  // Face verification data
   face_match_score?: number;
   photo_url?: string;
+  verification_method?: 'face_recognition' | 'manual' | 'card_swipe';
+  confidence_score?: number;
+  
+  // Work hours calculation
+  total_hours?: number;
+  overtime_minutes?: number;
+  shift_type?: string;
+  
+  synced?: boolean;
   created_at: string;
   updated_at: string;
 }
 
+// ========== DEPARTMENT TYPES ==========
+export interface Department {
+  id: string;
+  code: string;
+  name: 'Studio' | 'Logistics' | 'Bakery' | 'Spa';  // Fixed values for your business
+  description?: string;
+  manager?: string;
+  location?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ========== SHIFT MANAGEMENT ==========
+export interface Shift {
+  id: string;
+  name: string;
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';
+  start_time: string;
+  end_time: string;
+  duration_hours: number;
+  break_duration_minutes?: number;
+  is_night_shift: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StaffShiftAssignment {
+  id: string;
+  staff_id: string;
+  staff?: Staff;
+  shift_id: string;
+  shift?: Shift;
+  effective_date: string;
+  end_date?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ========== ATTENDANCE SESSIONS ==========
 export interface AttendanceSession {
   id: string;
-  course_code: string;
-  faculty_id: string;
-  department_id: string;
-  level: number;
+  session_type: 'morning' | 'afternoon' | 'evening' | 'full_day' | 'special';
   session_date: string;
   start_time: string;
   end_time?: string;
-  total_students: number;
-  attended_students: number;
+  location?: string;
+  
+  // Department filtering (if needed)
+  department?: 'studio' | 'logistics' | 'bakery' | 'spa';
+  
+  // Stats
+  total_staff: number;
+  attended_staff: number;
+  late_arrivals: number;
+  early_departures: number;
+  
   status: 'active' | 'completed';
   is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
+// ========== LEAVE MANAGEMENT ==========
+export interface LeaveRequest {
+  id: string;
+  staff_id: string;
+  staff?: Staff;
+  leave_type: 'annual' | 'sick' | 'maternity' | 'paternity' | 'unpaid' | 'other';
+  start_date: string;
+  end_date: string;
+  total_days: number;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approved_by?: string;
+  approved_date?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ========== OVERTIME MANAGEMENT ==========
+export interface OvertimeRecord {
+  id: string;
+  staff_id: string;
+  staff?: Staff;
+  date: string;
+  start_time: string;
+  end_time: string;
+  total_minutes: number;
+  reason?: string;
+  status: 'pending' | 'approved' | 'rejected' | 'paid';
+  approved_by?: string;
+  rate_multiplier?: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ========== FACE VERIFICATION TYPES ==========
 export interface FaceMatchLog {
   id: string;
-  student_id?: string;
-  event_id?: string;
+  staff_id?: string;
   session_id?: string;
   confidence: number;
   threshold: number;
@@ -285,6 +202,51 @@ export interface FaceMatchLog {
   created_at: string;
 }
 
+export interface FaceVerificationResult {
+  success: boolean;
+  match: boolean;
+  staff?: Staff;
+  confidence?: number;
+  matchScore?: number;
+  message: string;
+  timestamp: string;
+  image?: string;
+  sessionInfo?: {
+    totalStaff?: number;
+    department?: string;
+    time?: string;
+  };
+}
+
+// ========== ATTENDANCE RESULTS ==========
+export interface AttendanceResult {
+  success: boolean;
+  staff?: {
+    id: string;
+    name: string;
+    staff_id: string;
+    department: string;
+  };
+  confidence?: number;
+  message: string;
+  timestamp: string;
+  offline?: boolean;
+  alreadyMarked?: boolean;
+}
+
+// ========== ENROLLMENT RESULTS ==========
+export interface EnrollmentResult {
+  success: boolean;
+  staffId?: string;
+  staffName?: string;
+  embedding?: number[];
+  quality?: number;
+  photoUrl?: string;
+  timestamp: string;
+  message: string;
+}
+
+// ========== SYNCHRONIZATION ==========
 export interface SyncQueueItem {
   id: string;
   table_name: string;
@@ -297,77 +259,79 @@ export interface SyncQueueItem {
   synced_at?: string;
 }
 
-export interface StudentAcademicHistory {
+// ========== REPORTS AND ANALYTICS ==========
+export interface AttendanceSummary {
+  date: string;
+  department: string;
+  total_staff: number;
+  present: number;
+  absent: number;
+  late: number;
+  early_departures: number;
+  average_hours: number;
+  total_overtime_minutes: number;
+}
+
+export interface DepartmentAttendance {
+  department: 'studio' | 'logistics' | 'bakery' | 'spa';
+  total_staff: number;
+  present_count: number;
+  attendance_rate: number;
+  average_arrival_time: string;
+  average_departure_time: string;
+}
+
+// ========== SETTINGS AND CONFIGURATION ==========
+export interface AttendanceSettings {
   id: string;
-  student_id: string;
-  student?: Student;
-  academic_session_id: string;
-  academic_session?: AcademicSession;
-  level_id: string;
-  level?: Level;
-  semester_id: string;
-  semester?: Semester;
-  program_id: string;
-  program?: Program;
-  cgpa?: number;
-  status: 'ACTIVE' | 'PROBATION' | 'SUSPENDED' | 'WITHDRAWN' | 'GRADUATED' | 'DISMISSED';
-  remarks?: string;
+  organization_name: string;
+  timezone: string;
+  work_start_time: string;
+  work_end_time: string;
+  late_threshold_minutes: number;
+  early_departure_threshold_minutes: number;
+  overtime_start_minutes: number;
+  face_match_threshold: number;
+  auto_capture_interval: number;
+  enable_auto_capture: boolean;
+  enable_email_notifications: boolean;
+  enable_sms_notifications: boolean;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
 
-export interface StudentCourseRegistration {
-  id: string;
-  student_id: string;
-  student?: Student;
-  course_id: string;
-  course?: Course;
-  academic_session_id: string;
-  academic_session?: AcademicSession;
-  semester_id: string;
-  semester?: Semester;
-  is_registered: boolean;
-  registration_date?: string;
-  created_at: string;
-  updated_at: string;
+// ========== UTILITY TYPES ==========
+export interface DailyAttendanceStats {
+  date: string;
+  studio: AttendanceStats;
+  logistics: AttendanceStats;
+  bakery: AttendanceStats;
+  spa: AttendanceStats;
 }
 
-export interface FaceVerificationResult {
-  success: boolean;
-  match: boolean;
-  student?: Student;
-  confidence?: number;
-  matchScore?: number;
-  message: string;
-  timestamp: string;
-  image?: string;
-  sessionInfo?: {
-    totalStudents?: number;
-    courseCode?: string;
-    level?: number;
-  };
+export interface AttendanceStats {
+  total: number;
+  present: number;
+  absent: number;
+  late: number;
+  on_leave: number;
+  attendance_rate: number;
 }
 
-export interface AttendanceResult {
-  success: boolean;
-  student?: {
-    id: string;
-    name: string;
-    matric_number: string;
-  };
-  confidence?: number;
-  message: string;
-  timestamp: string;
-  offline?: boolean;
+export interface StaffDashboardStats {
+  total_staff: number;
+  active_staff: number;
+  todays_attendance: number;
+  attendance_rate: number;
+  pending_leave_requests: number;
+  monthly_overtime_hours: number;
+  department_breakdown: DepartmentBreakdown[];
 }
 
-export interface EnrollmentResult {
-  success: boolean;
-  studentId?: string;
-  studentName?: string;
-  embedding?: number[];
-  quality?: number;
-  photoUrl?: string;
-  timestamp: string;
-  message: string;
+export interface DepartmentBreakdown {
+  department: string;
+  staff_count: number;
+  todays_present: number;
+  attendance_rate: number;
 }
