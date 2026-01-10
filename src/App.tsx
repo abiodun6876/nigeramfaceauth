@@ -186,41 +186,42 @@ function App() {
   });
 
   useEffect(() => {
-    async function testConnection() {
-      try {
-        const { data: faculties, error } = await supabase
-          .from('faculties')
-          .select('*')
-          .limit(1);
-        
-        if (error) {
-          console.error('Connection test failed:', error);
-          setConnectionStatus({
-            status: 'error',
-            message: 'Database Connection Failed',
-            details: error.message
-          });
-        } else {
-          setConnectionStatus({
-            status: 'connected',
-            message: 'Connected',
-            details: null
-          });
-        }
-      } catch (error: any) {
+  async function testConnection() {
+    try {
+      // Test connection by checking if we can query any table
+      const { error } = await supabase
+        .from('attendance_settings')
+        .select('count', { count: 'exact', head: true });
+      
+      if (error) {
         console.error('Connection test failed:', error);
         setConnectionStatus({
           status: 'error',
-          message: 'Network Error',
+          message: 'Database Connection Failed',
           details: error.message
         });
-      } finally {
-        setLoading(false);
+      } else {
+        console.log('Database connected successfully!');
+        setConnectionStatus({
+          status: 'connected',
+          message: 'Connected to Nigeram Database',
+          details: null
+        });
       }
+    } catch (error: any) {
+      console.error('Connection test failed:', error);
+      setConnectionStatus({
+        status: 'error',
+        message: 'Network Error',
+        details: error.message
+      });
+    } finally {
+      setLoading(false);
     }
-    
-    testConnection();
-  }, []);
+  }
+  
+  testConnection();
+}, []);
 
   if (connectionStatus.status === 'error') {
     return (

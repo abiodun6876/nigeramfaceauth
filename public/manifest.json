@@ -13,49 +13,49 @@
   "categories": ["education", "productivity", "utilities"],
   "icons": [
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "72x72",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "96x96",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "128x128",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "144x144",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "152x152",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "384x384",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
@@ -67,26 +67,26 @@
       "short_name": "Attendance",
       "description": "Start a new attendance session",
       "url": "/attendance",
-      "icons": [{ "src": "/icons/abuad.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/nigeram.png", "sizes": "96x96" }]
     },
     {
       "name": "Enroll Student",
       "short_name": "Enroll",
       "description": "Register new student with face",
       "url": "/enroll",
-      "icons": [{ "src": "/icons/abuad.png", "sizes": "96x96" }]
+      "icons": [{ "src": "/icons/nigeram.png", "sizes": "96x96" }]
     }
   ],
   "screenshots": [
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "type": "image/png",
       "sizes": "1080x1920",
       "form_factor": "narrow",
       "label": "Mobile Dashboard"
     },
     {
-      "src": "/icons/abuad.png",
+      "src": "/icons/nigeram.png",
       "type": "image/png",
       "sizes": "1080x1920",
       "form_factor": "narrow",
