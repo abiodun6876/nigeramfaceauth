@@ -736,19 +736,7 @@ const EnrollmentPage: React.FC = () => {
                 >
                   Enroll Another Staff
                 </Button>
-                <Button 
-                  size="large"
-                  onClick={() => window.location.href = '/'}
-                >
-                  Back to Home
-                </Button>
-                <Button 
-                  size="large"
-                  type="primary"
-                  onClick={() => window.location.href = '/attendance'}
-                >
-                  Take Attendance
-                </Button>
+               
               </Space>
             </>
           ) : enrollmentResult?.status === 'pending' ? (
@@ -843,12 +831,7 @@ const EnrollmentPage: React.FC = () => {
                 >
                   Capture New Photo
                 </Button>
-                <Button 
-                  size="large"
-                  onClick={() => window.location.href = '/staff'}
-                >
-                  Go to Staff Management
-                </Button>
+                
               </Space>
             </>
           ) : (
@@ -1083,14 +1066,7 @@ const EnrollmentPage: React.FC = () => {
                   </Text>
                 </div>
                 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 10, color: '#aaccff', opacity: 0.8 }}>
-                    Face Enrollment Tips:
-                  </Text>
-                  <Text style={{ fontSize: 9, color: '#aaccff', textAlign: 'center' }}>
-                    • Good lighting • Face centered • No glasses/hats
-                  </Text>
-                </div>
+                
                 
                 <Button
                   size="small"
