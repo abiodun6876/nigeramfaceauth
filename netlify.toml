@@ -1,12 +1,7 @@
 [build]
   command = "npm run build"
   publish = "dist"
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
-[build.environment]
-  NODE_VERSION = "18"
+  environment = { NODE_VERSION = "18" }
 
 [[headers]]
   for = "/models/*"
@@ -15,6 +10,12 @@
     Access-Control-Allow-Origin = "*"
     Cache-Control = "public, max-age=31536000"
 
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# For Single Page Apps (SPA)
 [[redirects]]
   from = "/*"
   to = "/index.html"
