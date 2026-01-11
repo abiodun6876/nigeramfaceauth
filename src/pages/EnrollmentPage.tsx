@@ -153,56 +153,35 @@ const EnrollmentPage: React.FC = () => {
   };
 
   const handleCapture = async () => {
-    if (!cameraRef.current || isProcessing) return;
+  if (!cameraRef.current || loading) return;
+  
+  try {
+    setLoading(true);
+    setFaceDetectionTips('Capturing image...');
     
-    try {
-      setIsProcessing(true);
-      setFaceDetectionTips('Capturing image...');
-      
-      const result = await cameraRef.current.captureImage();
-      
-      if (result && result.photoUrl) {
-        setCapturedImage(result.photoUrl);
-        setShowCapturedPreview(true);
-        setCaptureCount(prev => prev + 1);
-        setFaceDetectionTips('Image captured successfully!');
-        message.success('Image captured successfully!');
-      } else {
-        message.error('Failed to capture image');
-      }
-    } catch (error) {
-      console.error('Capture error:', error);
+    const result = await cameraRef.current.captureImage();
+    
+    if (result && result.photoUrl) {
+      setCapturedImage(result.photoUrl);
+      setShowCapturedPreview(true);
+      setCaptureCount(prev => prev + 1);
+      setFaceDetectionTips('Image captured successfully!');
+      message.success('Image captured successfully!');
+    } else {
       message.error('Failed to capture image');
-    } finally {
-      setIsProcessing(false);
     }
-  };
-
-  
-
-  const handleRetryCapture = () => {
-    setCapturedImage(null);
-    setShowCapturedPreview(false);
-    setFaceDetectionTips('Position face in center');
-  };
-
-  // Replace the handleUseCapturedImage function
-const handleUseCapturedImage = () => {
-  if (!capturedImage) {
-    message.error('No captured image available');
-    return;
+  } catch (error) {
+    console.error('Capture error:', error);
+    message.error('Failed to capture image');
+  } finally {
+    setLoading(false);
   }
-  
-  setShowCapturedPreview(false);
-  // Pass the captured image directly to enrollment process
-  processEnrollmentWithImage(capturedImage);
 };
-
+  
 // Create a new function to handle enrollment with captured image
 const processEnrollmentWithImage = async (imageUrl: string) => {
   try {
     setLoading(true);
-    setIsProcessing(true);
     console.log('🔄 Starting enrollment process with captured image...');
 
     let staffDepartment = staffData.department;
@@ -261,30 +240,24 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
     console.log('✅ Image saved locally');
 
     // 3. Save to Supabase with photo URL
-    try {
-      console.log('💾 Saving staff record to database...');
-      const updatedRecord = {
-        ...staffRecord,
-        photo_url: compressedImage,
-        updated_at: new Date().toISOString()
-      };
-      
-      const { data, error } = await supabase
-        .from('staff')
-        .upsert([updatedRecord], { onConflict: 'staff_id' })
-        .select();
-      
-      if (error) {
-        console.error('❌ DB Save Error:', error);
-        throw new Error(`Database save failed: ${error.message}`);
-      }
-      
-      console.log('✅ Staff saved to Supabase with photo:', data);
-      
-    } catch (dbError: any) {
-      console.error('Database save failed:', dbError);
-      throw new Error(`Database save failed: ${dbError.message}`);
+    console.log('💾 Saving staff record to database...');
+    const updatedRecord = {
+      ...staffRecord,
+      photo_url: compressedImage,
+      updated_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabase
+      .from('staff')
+      .upsert([updatedRecord], { onConflict: 'staff_id' })
+      .select();
+    
+    if (error) {
+      console.error('❌ DB Save Error:', error);
+      throw new Error(`Database save failed: ${error.message}`);
     }
+    
+    console.log('✅ Staff saved to Supabase with photo:', data);
 
     // 4. Extract face embedding
     let faceEmbeddingExtracted = false;
@@ -317,11 +290,14 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
     }
 
     // 5. Update database with face embedding if detected
+    let enrollmentSuccess = false;
+    let enrollmentStatus = 'pending';
+    
     if (faceEmbeddingExtracted && descriptor && embeddingArray.length > 0) {
       console.log('💾 Saving face embedding to database...');
       
       try {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('staff')
           .update({
             enrollment_status: 'enrolled',
@@ -331,7 +307,7 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
           })
           .eq('staff_id', currentStaffId);
         
-        if (error) throw error;
+        if (updateError) throw updateError;
         
         console.log('✅ Database updated with face embedding');
         
@@ -339,6 +315,9 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
         faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
         
         // SUCCESS
+        enrollmentSuccess = true;
+        enrollmentStatus = 'enrolled';
+        
         setEnrollmentResult({
           success: true,
           message: 'Enrollment Complete!',
@@ -366,6 +345,9 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
           faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
         }
         
+        enrollmentSuccess = true;
+        enrollmentStatus = 'enrolled_local';
+        
         setEnrollmentResult({
           success: true,
           message: 'Enrollment saved locally (DB update failed)',
@@ -389,6 +371,8 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
     } else {
       // PARTIAL SUCCESS: Saved but no face
       console.log('⚠️ Staff saved but no face embedding detected');
+      enrollmentSuccess = false;
+      enrollmentStatus = 'pending';
       
       setEnrollmentResult({
         success: false,
@@ -410,33 +394,60 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
       message.warning(`⚠️ ${staffName} saved but no face detected. Status: Pending`);
     }
     
+    // Log the enrollment result immediately
+    console.log('📊 Enrollment process completed:', {
+      success: enrollmentSuccess,
+      status: enrollmentStatus,
+      hasEmbedding: faceEmbeddingExtracted
+    });
+    
   } catch (error: any) {
     console.error('❌ Enrollment failed:', error);
     
-    setEnrollmentResult({
+    const errorResult = {
       success: false,
       message: 'Enrollment failed',
       error: error.message,
       status: 'failed',
       timestamp: new Date().toISOString()
-    });
+    };
     
+    setEnrollmentResult(errorResult);
     message.error(`❌ Enrollment failed: ${error.message}`);
+    
+    console.log('📊 Enrollment process failed:', {
+      success: false,
+      status: 'failed',
+      error: error.message
+    });
     
   } finally {
     setLoading(false);
-    setIsProcessing(false);
     setEnrollmentComplete(true);
     setIsCameraActive(false);
     setCapturedImage(null);
-    
-    console.log('📊 Enrollment process completed:', {
-      success: enrollmentResult?.success,
-      status: enrollmentResult?.status,
-      hasEmbedding: enrollmentResult?.faceEmbeddingSaved
-    });
   }
 };
+
+  const handleRetryCapture = () => {
+    setCapturedImage(null);
+    setShowCapturedPreview(false);
+    setFaceDetectionTips('Position face in center');
+  };
+
+  // Replace the handleUseCapturedImage function
+const handleUseCapturedImage = () => {
+  if (!capturedImage) {
+    message.error('No captured image available');
+    return;
+  }
+  
+  setShowCapturedPreview(false);
+  // Pass the captured image directly to enrollment process
+  processEnrollmentWithImage(capturedImage);
+};
+
+
 
 
 
@@ -1084,35 +1095,35 @@ const processEnrollmentWithImage = async (imageUrl: string) => {
               </div>
             </div>
             
-            {/* Processing Overlay */}
-            {isProcessing && (
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 100,
-                borderRadius: 8
-              }}>
-                <div style={{ textAlign: 'center' }}>
-                  <Spin size="large" />
-                  <div style={{ 
-                    marginTop: 16, 
-                    color: '#00ffaa',
-                    fontSize: 14,
-                    fontWeight: 'bold',
-                    animation: 'pulse 1.5s infinite'
-                  }}>
-                    PROCESSING...
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* Processing Overlay - Check only loading state */}
+{loading && (
+  <div style={{
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+    borderRadius: 8
+  }}>
+    <div style={{ textAlign: 'center' }}>
+      <Spin size="large" />
+      <div style={{ 
+        marginTop: 16, 
+        color: '#00ffaa',
+        fontSize: 14,
+        fontWeight: 'bold',
+        animation: 'pulse 1.5s infinite'
+      }}>
+        PROCESSING...
+      </div>
+    </div>
+  </div>
+)}
           </div>
           
           {/* Footer with Action Buttons */}
