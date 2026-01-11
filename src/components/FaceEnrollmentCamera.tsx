@@ -1,6 +1,6 @@
 // src/components/FaceEnrollmentCamera.tsx - FIXED VERSION
 import React, { useState, useRef, useEffect } from 'react';
-import { Typography, Progress } from 'antd';
+import { Typography, Progress, message } from 'antd';
 import { VideoOff, Camera, CheckCircle, Pause, Play } from 'lucide-react';
 
 const { Text, Title } = Typography;
@@ -31,6 +31,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Start camera
   const startCamera = async () => {
@@ -59,6 +60,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
         
         videoRef.current.onloadedmetadata = () => {
           setIsCameraActive(true);
+          console.log('Camera loaded, starting auto-scan');
           if (autoScanActive) {
             startAutoScan();
           }
@@ -85,11 +87,13 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     
     setAutoScanActive(true);
     
+    console.log('Starting auto-scan interval');
     captureIntervalRef.current = setInterval(() => {
       if (isCameraActive && !isCapturing) {
+        console.log('Auto-scan triggering capture');
         handleCapture();
       }
-    }, 3000);
+    }, 3000); // Every 3 seconds
   };
 
   // Stop auto-scan
@@ -99,11 +103,13 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
       captureIntervalRef.current = null;
     }
     setAutoScanActive(false);
+    console.log('Auto-scan stopped');
   };
 
   // Capture image
   const captureImage = (): string | null => {
     if (!isCameraActive || !videoRef.current || !canvasRef.current) {
+      console.log('Cannot capture: camera not ready');
       return null;
     }
 
@@ -111,7 +117,10 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     
-    if (!ctx) return null;
+    if (!ctx) {
+      console.log('Cannot get canvas context');
+      return null;
+    }
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -121,20 +130,32 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     ctx.scale(-1, 1);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    return canvas.toDataURL('image/jpeg', 0.8);
+    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    console.log('Image captured successfully');
+    return imageData;
   };
 
   // Handle capture
   const handleCapture = () => {
-    if (!isCameraActive || isCapturing) return;
+    if (!isCameraActive || isCapturing) {
+      console.log('Cannot capture: camera not active or already capturing');
+      return;
+    }
     
+    console.log('Starting capture...');
     setIsCapturing(true);
     setCaptureCount(prev => prev + 1);
+    
+    // Clear any existing progress interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
     
     // Capture image
     const imageData = captureImage();
     
     if (!imageData) {
+      console.log('Capture failed, no image data');
       setLastResult({
         success: false,
         message: 'Capture failed'
@@ -143,12 +164,14 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
       return;
     }
     
-    // Show progress
+    // Show progress animation
     setProgress(0);
-    const interval = setInterval(() => {
+    progressIntervalRef.current = setInterval(() => {
       setProgress(prev => {
         if (prev >= 100) {
-          clearInterval(interval);
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+          }
           
           // Success result
           const result = {
@@ -159,6 +182,8 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
             captureCount: captureCount + 1
           };
           
+          console.log('Capture complete, calling onEnrollmentComplete');
+          
           // Show success message
           setLastResult({
             success: true,
@@ -166,21 +191,38 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
             temporary: true
           });
           
-          // Complete enrollment after 1.5 seconds
+          // Call the parent callback after a short delay
           setTimeout(() => {
-            setIsCapturing(false);
+            console.log('Calling onEnrollmentComplete with result:', result);
             onEnrollmentComplete(result);
-          }, 1500);
+            setIsCapturing(false);
+            
+            // Clear success message after 1.5 seconds
+            setTimeout(() => {
+              setLastResult(null);
+            }, 1500);
+          }, 1000);
           
           return 100;
         }
-        return prev + 25;
+        return prev + 20; // Faster progress (5 steps to 100)
       });
     }, 100);
   };
 
+  // Manual capture button
+  const handleManualCapture = () => {
+    console.log('Manual capture triggered');
+    if (!isCameraActive) {
+      message.error('Camera not ready');
+      return;
+    }
+    handleCapture();
+  };
+
   // Toggle auto-scan
   const toggleAutoScan = () => {
+    console.log('Toggling auto-scan, current state:', autoScanActive);
     if (autoScanActive) {
       stopAutoScan();
     } else {
@@ -190,11 +232,16 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
 
   // Initialize camera
   useEffect(() => {
+    console.log('FaceEnrollmentCamera mounted, starting camera...');
     startCamera();
     
     return () => {
+      console.log('FaceEnrollmentCamera unmounting, cleaning up...');
       if (captureIntervalRef.current) {
         clearInterval(captureIntervalRef.current);
+      }
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
       }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
@@ -226,22 +273,24 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
             width: 8,
             height: 8,
             borderRadius: '50%',
-            backgroundColor: '#00ffaa'
+            backgroundColor: isCameraActive ? '#00ffaa' : '#ffaa00'
           }} />
           <Text style={{ fontSize: 12, color: '#aaccff' }}>
-            READY
+            {isCameraActive ? 'READY' : 'LOADING'}
           </Text>
         </div>
         
         <div style={{ 
-          backgroundColor: 'rgba(0, 255, 150, 0.1)',
-          color: '#00ffaa',
+          backgroundColor: autoScanActive 
+            ? 'rgba(0, 255, 150, 0.1)' 
+            : 'rgba(255, 170, 0, 0.1)',
+          color: autoScanActive ? '#00ffaa' : '#ffaa00',
           padding: '4px 12px',
           borderRadius: 12,
           fontSize: 12,
           fontWeight: 'bold'
         }}>
-          AUTO-SCAN: {captureCount}
+          {autoScanActive ? `AUTO-SCAN: ${captureCount}` : 'MANUAL MODE'}
         </div>
       </div>
 
@@ -343,14 +392,14 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
                 marginTop: 8,
                 fontWeight: 'bold'
               }}>
-                PROCESSING...
+                PROCESSING CAPTURE...
               </Text>
             </div>
           </div>
         )}
         
         {/* Success Message */}
-        {lastResult && lastResult.success && (
+        {lastResult && lastResult.success && lastResult.temporary && (
           <div style={{
             position: 'absolute',
             top: 0,
@@ -360,7 +409,8 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 20
+            zIndex: 20,
+            animation: 'fadeIn 0.5s'
           }}>
             <div style={{
               backgroundColor: 'rgba(0, 255, 150, 0.15)',
@@ -398,10 +448,12 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           marginBottom: 12
         }}>
           <button
-            onClick={handleCapture}
+            onClick={handleManualCapture}
             disabled={isCapturing || !isCameraActive}
             style={{
-              backgroundColor: 'rgba(0, 150, 255, 0.8)',
+              backgroundColor: isCapturing || !isCameraActive 
+                ? 'rgba(100, 100, 100, 0.5)' 
+                : 'rgba(0, 150, 255, 0.8)',
               color: '#ffffff',
               border: 'none',
               padding: '12px 24px',
@@ -413,7 +465,8 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
               alignItems: 'center',
               gap: 8,
               minWidth: 150,
-              justifyContent: 'center'
+              justifyContent: 'center',
+              transition: 'all 0.3s'
             }}
           >
             <Camera size={18} />
@@ -437,11 +490,12 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
               alignItems: 'center',
               gap: 8,
               minWidth: 150,
-              justifyContent: 'center'
+              justifyContent: 'center',
+              transition: 'all 0.3s'
             }}
           >
             {autoScanActive ? <Pause size={18} /> : <Play size={18} />}
-            {autoScanActive ? 'PAUSE AUTO-SCAN' : 'RESUME AUTO-SCAN'}
+            {autoScanActive ? 'PAUSE AUTO' : 'START AUTO'}
           </button>
         </div>
         
@@ -451,11 +505,28 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           textAlign: 'center',
           fontStyle: 'italic'
         }}>
-          Position face in the frame for automatic capture
+          {autoScanActive 
+            ? 'Auto-scan active: Capturing every 3 seconds' 
+            : 'Click "Capture Now" to manually capture'}
         </Text>
       </div>
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+      
+      {/* Add CSS animations */}
+      <style>
+        {`
+          @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+          }
+          @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+          }
+        `}
+      </style>
     </div>
   );
 };
