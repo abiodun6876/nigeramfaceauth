@@ -1,7 +1,7 @@
-// src/components/FaceEnrollmentCamera.tsx - COMPLETE VERSION
+// src/components/FaceEnrollmentCamera.tsx - SIMPLIFIED MANUAL ONLY VERSION
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
-import { Typography, Progress, message } from 'antd';
-import { VideoOff, Camera, CheckCircle, Pause, Play } from 'lucide-react';
+import { Typography, Progress } from 'antd';
+import { VideoOff, Camera, CheckCircle } from 'lucide-react';
 
 const { Text, Title } = Typography;
 
@@ -13,16 +13,12 @@ interface FaceEnrollmentCameraProps {
     department: string;
   };
   onEnrollmentComplete?: (result: any) => void;
-  autoCapture?: boolean;
-  captureInterval?: number;
   onFaceDetectionUpdate?: (status: any) => void;
 }
 
 const FaceEnrollmentCamera = forwardRef(({
   staff,
   onEnrollmentComplete,
-  autoCapture = false,
-  captureInterval = 3000,
   onFaceDetectionUpdate
 }: FaceEnrollmentCameraProps, ref) => {
   const [isCapturing, setIsCapturing] = useState(false);
@@ -30,20 +26,18 @@ const FaceEnrollmentCamera = forwardRef(({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [captureCount, setCaptureCount] = useState(0);
-  const [autoScanActive, setAutoScanActive] = useState(autoCapture);
   const [lastResult, setLastResult] = useState<any>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Expose methods to parent
   useImperativeHandle(ref, () => ({
     captureImage: async () => {
       console.log('Manual capture triggered via ref');
-      return handleManualCaptureViaRef();
+      return handleManualCapture();
     },
     startCamera: async () => {
       return startCamera();
@@ -83,10 +77,7 @@ const FaceEnrollmentCamera = forwardRef(({
         return new Promise<boolean>((resolve) => {
           videoRef.current!.onloadedmetadata = () => {
             setIsCameraActive(true);
-            console.log('Camera loaded');
-            if (autoCapture && autoScanActive) {
-              startAutoScan();
-            }
+            console.log('Camera loaded for enrollment');
             resolve(true);
           };
         });
@@ -108,7 +99,6 @@ const FaceEnrollmentCamera = forwardRef(({
 
   // Stop camera
   const stopCamera = () => {
-    stopAutoScan();
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -119,35 +109,8 @@ const FaceEnrollmentCamera = forwardRef(({
     setIsCameraActive(false);
   };
 
-  // Start auto-scan
-  const startAutoScan = () => {
-    if (captureIntervalRef.current) {
-      clearInterval(captureIntervalRef.current);
-    }
-    
-    setAutoScanActive(true);
-    
-    console.log('Starting auto-scan interval');
-    captureIntervalRef.current = setInterval(() => {
-      if (isCameraActive && !isCapturing) {
-        console.log('Auto-scan triggering capture');
-        handleAutoCapture();
-      }
-    }, captureInterval);
-  };
-
-  // Stop auto-scan
-  const stopAutoScan = () => {
-    if (captureIntervalRef.current) {
-      clearInterval(captureIntervalRef.current);
-      captureIntervalRef.current = null;
-    }
-    setAutoScanActive(false);
-    console.log('Auto-scan stopped');
-  };
-
-  // Manual capture via ref
-  const handleManualCaptureViaRef = async () => {
+  // Handle manual capture
+  const handleManualCapture = async () => {
     if (!isCameraActive) {
       console.log('Camera not active');
       return {
@@ -156,7 +119,7 @@ const FaceEnrollmentCamera = forwardRef(({
       };
     }
     
-    console.log('Starting manual capture via ref');
+    console.log('Starting manual capture');
     setIsCapturing(true);
     
     // Capture image
@@ -175,22 +138,51 @@ const FaceEnrollmentCamera = forwardRef(({
       };
     }
 
-    // Return immediately without progress animation for ref calls
-    const result = {
-      success: true,
-      photoUrl: imageData,
-      quality: 0.8,
-      faceScore: 0.7,
-      timestamp: new Date().toISOString(),
-      staff: staff,
-      captureCount: captureCount + 1
-    };
-    
-    console.log('Manual capture complete via ref');
-    setIsCapturing(false);
-    setCaptureCount(prev => prev + 1);
-    
-    return result;
+    // Show progress animation
+    return new Promise((resolve) => {
+      setProgress(0);
+      progressIntervalRef.current = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 100) {
+            if (progressIntervalRef.current) {
+              clearInterval(progressIntervalRef.current);
+            }
+            
+            const result = {
+              success: true,
+              photoUrl: imageData,
+              quality: 0.8,
+              faceScore: 0.7,
+              timestamp: new Date().toISOString(),
+              staff: staff,
+              captureCount: captureCount + 1
+            };
+            
+            console.log('Manual capture complete');
+            
+            // Show success message
+            setLastResult({
+              success: true,
+              message: 'Photo Captured!',
+              temporary: true
+            });
+            
+            // Update capture count
+            setCaptureCount(prev => prev + 1);
+            setIsCapturing(false);
+            
+            // Clear success message after 1.5 seconds
+            setTimeout(() => {
+              setLastResult(null);
+            }, 1500);
+            
+            resolve(result);
+            return 100;
+          }
+          return prev + 20;
+        });
+      }, 100);
+    });
   };
 
   // Capture image helper
@@ -222,179 +214,6 @@ const FaceEnrollmentCamera = forwardRef(({
     return imageData;
   };
 
-  // Handle auto capture
-  const handleAutoCapture = () => {
-    if (!isCameraActive || isCapturing) {
-      console.log('Cannot capture: camera not active or already capturing');
-      return;
-    }
-    
-    console.log('Starting auto capture...');
-    setIsCapturing(true);
-    setCaptureCount(prev => prev + 1);
-    
-    // Clear any existing progress interval
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
-    }
-    
-    // Capture image
-    const imageData = captureImage();
-    
-    if (!imageData) {
-      console.log('Capture failed, no image data');
-      setLastResult({
-        success: false,
-        message: 'Capture failed'
-      });
-      setIsCapturing(false);
-      return;
-    }
-    
-    // Show progress animation
-    setProgress(0);
-    progressIntervalRef.current = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-          }
-          
-          // Success result
-          const result = {
-            success: true,
-            photoUrl: imageData,
-            quality: 0.8,
-            faceScore: 0.7,
-            timestamp: new Date().toISOString(),
-            staff: staff,
-            captureCount: captureCount + 1
-          };
-          
-          console.log('Auto capture complete, calling onEnrollmentComplete');
-          
-          // Show success message
-          setLastResult({
-            success: true,
-            message: 'Face Captured Successfully!',
-            temporary: true
-          });
-          
-          // Call the parent callback after a short delay
-          setTimeout(() => {
-            if (onEnrollmentComplete) {
-              console.log('Calling onEnrollmentComplete with result:', result);
-              onEnrollmentComplete(result);
-              setIsCapturing(false);
-            }
-            
-            // Clear success message after 1.5 seconds
-            setTimeout(() => {
-              setLastResult(null);
-            }, 1500);
-          }, 1000);
-          
-          return 100;
-        }
-        return prev + 20;
-      });
-    }, 100);
-  };
-
-  // Handle manual capture via button
-  const handleManualCapture = () => {
-    console.log('Manual capture triggered via button');
-    if (!isCameraActive) {
-      message.error('Camera not ready');
-      return;
-    }
-    
-    if (isCapturing) {
-      message.warning('Already capturing, please wait');
-      return;
-    }
-    
-    setIsCapturing(true);
-    setCaptureCount(prev => prev + 1);
-    
-    // Clear any existing progress interval
-    if (progressIntervalRef.current) {
-      clearInterval(progressIntervalRef.current);
-    }
-    
-    // Capture image
-    const imageData = captureImage();
-    
-    if (!imageData) {
-      console.log('Capture failed, no image data');
-      setLastResult({
-        success: false,
-        message: 'Capture failed'
-      });
-      setIsCapturing(false);
-      return;
-    }
-    
-    // Show progress animation
-    setProgress(0);
-    progressIntervalRef.current = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          if (progressIntervalRef.current) {
-            clearInterval(progressIntervalRef.current);
-          }
-          
-          // Success result
-          const result = {
-            success: true,
-            photoUrl: imageData,
-            quality: 0.8,
-            faceScore: 0.7,
-            timestamp: new Date().toISOString(),
-            staff: staff,
-            captureCount: captureCount + 1
-          };
-          
-          console.log('Manual capture complete, calling onEnrollmentComplete');
-          
-          // Show success message
-          setLastResult({
-            success: true,
-            message: 'Face Captured Successfully!',
-            temporary: true
-          });
-          
-          // Call the parent callback after a short delay
-          setTimeout(() => {
-            if (onEnrollmentComplete) {
-              console.log('Calling onEnrollmentComplete with result:', result);
-              onEnrollmentComplete(result);
-              setIsCapturing(false);
-            }
-            
-            // Clear success message after 1.5 seconds
-            setTimeout(() => {
-              setLastResult(null);
-            }, 1500);
-          }, 1000);
-          
-          return 100;
-        }
-        return prev + 20;
-      });
-    }, 100);
-  };
-
-  // Toggle auto-scan
-  const toggleAutoScan = () => {
-    console.log('Toggling auto-scan, current state:', autoScanActive);
-    if (autoScanActive) {
-      stopAutoScan();
-    } else {
-      startAutoScan();
-    }
-  };
-
   // Initialize camera
   useEffect(() => {
     console.log('FaceEnrollmentCamera mounted, starting camera...');
@@ -402,9 +221,6 @@ const FaceEnrollmentCamera = forwardRef(({
     
     return () => {
       console.log('FaceEnrollmentCamera unmounting, cleaning up...');
-      if (captureIntervalRef.current) {
-        clearInterval(captureIntervalRef.current);
-      }
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
       }
@@ -446,16 +262,14 @@ const FaceEnrollmentCamera = forwardRef(({
         </div>
         
         <div style={{ 
-          backgroundColor: autoScanActive 
-            ? 'rgba(0, 255, 150, 0.1)' 
-            : 'rgba(255, 170, 0, 0.1)',
-          color: autoScanActive ? '#00ffaa' : '#ffaa00',
+          backgroundColor: 'rgba(0, 150, 255, 0.1)',
+          color: '#00aaff',
           padding: '4px 12px',
           borderRadius: 12,
           fontSize: 12,
           fontWeight: 'bold'
         }}>
-          {autoScanActive ? `AUTO-SCAN: ${captureCount}` : 'MANUAL MODE'}
+          MANUAL MODE
         </div>
       </div>
 
@@ -557,7 +371,7 @@ const FaceEnrollmentCamera = forwardRef(({
                 marginTop: 8,
                 fontWeight: 'bold'
               }}>
-                PROCESSING CAPTURE...
+                CAPTURING PHOTO...
               </Text>
             </div>
           </div>
@@ -593,86 +407,33 @@ const FaceEnrollmentCamera = forwardRef(({
                 margin: 0,
                 fontSize: 18
               }}>
-                Face Captured<br />Successfully!
+                Photo Captured!
               </Title>
+              <Text style={{ 
+                color: '#aaffaa', 
+                fontSize: 12,
+                marginTop: 4
+              }}>
+                Ready for enrollment
+              </Text>
             </div>
           </div>
         )}
       </div>
 
-      {/* Controls */}
+      {/* Status Footer */}
       <div style={{
-        padding: '16px',
+        padding: '12px 16px',
         backgroundColor: 'rgba(0, 20, 40, 0.8)',
-        borderTop: '1px solid rgba(0, 150, 255, 0.2)'
+        borderTop: '1px solid rgba(0, 150, 255, 0.2)',
+        textAlign: 'center'
       }}>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: 16,
-          marginBottom: 12
-        }}>
-          <button
-            onClick={handleManualCapture}
-            disabled={isCapturing || !isCameraActive}
-            style={{
-              backgroundColor: isCapturing || !isCameraActive 
-                ? 'rgba(100, 100, 100, 0.5)' 
-                : 'rgba(0, 150, 255, 0.8)',
-              color: '#ffffff',
-              border: 'none',
-              padding: '12px 24px',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 'bold',
-              cursor: isCapturing || !isCameraActive ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              minWidth: 150,
-              justifyContent: 'center',
-              transition: 'all 0.3s'
-            }}
-          >
-            <Camera size={18} />
-            {isCapturing ? 'CAPTURING...' : 'CAPTURE NOW'}
-          </button>
-          
-          <button
-            onClick={toggleAutoScan}
-            style={{
-              backgroundColor: autoScanActive 
-                ? 'rgba(255, 170, 0, 0.2)' 
-                : 'rgba(0, 255, 150, 0.2)',
-              color: autoScanActive ? '#ffaa00' : '#00ffaa',
-              border: `1px solid ${autoScanActive ? '#ffaa00' : '#00ffaa'}`,
-              padding: '12px 24px',
-              borderRadius: 8,
-              fontSize: 14,
-              fontWeight: 'bold',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              minWidth: 150,
-              justifyContent: 'center',
-              transition: 'all 0.3s'
-            }}
-          >
-            {autoScanActive ? <Pause size={18} /> : <Play size={18} />}
-            {autoScanActive ? 'PAUSE AUTO' : 'START AUTO'}
-          </button>
-        </div>
-        
         <Text style={{ 
           fontSize: 11, 
           color: '#aaccff',
-          textAlign: 'center',
           fontStyle: 'italic'
         }}>
-          {autoScanActive 
-            ? `Auto-scan active: Capturing every ${captureInterval / 1000} seconds` 
-            : 'Click "Capture Now" to manually capture'}
+          Click "CAPTURE NOW" button in controls above
         </Text>
       </div>
 
