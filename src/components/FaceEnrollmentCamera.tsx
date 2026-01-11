@@ -1,13 +1,12 @@
-// src/components/FaceEnrollmentCamera.tsx - UPDATED VERSION
+// src/components/FaceEnrollmentCamera.tsx - COMPLETE VERSION
 import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Typography, Progress, message } from 'antd';
 import { VideoOff, Camera, CheckCircle, Pause, Play } from 'lucide-react';
 
 const { Text, Title } = Typography;
 
-// In your FaceEnrollmentCamera.tsx component file
 interface FaceEnrollmentCameraProps {
-  staff: {
+  staff?: {
     id: string;
     name: string;
     staff_id: string;
@@ -40,62 +39,20 @@ const FaceEnrollmentCamera = forwardRef(({
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Expose captureImage method to parent
+  // Expose methods to parent
   useImperativeHandle(ref, () => ({
     captureImage: async () => {
       console.log('Manual capture triggered via ref');
-      return new Promise((resolve) => {
-        if (!isCameraActive || isCapturing) {
-          console.log('Cannot capture: camera not active or already capturing');
-          resolve({
-            success: false,
-            message: 'Camera not ready'
-          });
-          return;
-        }
-
-        console.log('Starting manual capture via ref...');
-        setIsCapturing(true);
-        
-        // Capture image
-        const imageData = captureImage();
-        
-        if (!imageData) {
-          console.log('Capture failed, no image data');
-          setLastResult({
-            success: false,
-            message: 'Capture failed'
-          });
-          setIsCapturing(false);
-          resolve({
-            success: false,
-            message: 'Capture failed'
-          });
-          return;
-        }
-
-        // Simulate processing delay
-        setTimeout(() => {
-          const result = {
-            success: true,
-            photoUrl: imageData,
-            quality: 0.8,
-            faceScore: 0.7,
-            timestamp: new Date().toISOString(),
-            staff: staff,
-            captureCount: captureCount + 1
-          };
-          
-          console.log('Manual capture complete via ref');
-          setIsCapturing(false);
-          
-          // Update capture count
-          setCaptureCount(prev => prev + 1);
-          
-          resolve(result);
-        }, 1000);
-      });
-    }
+      return handleManualCaptureViaRef();
+    },
+    startCamera: async () => {
+      return startCamera();
+    },
+    stopCamera: () => {
+      stopCamera();
+    },
+    isCameraActive: () => isCameraActive,
+    isCapturing: () => isCapturing
   }));
 
   // Start camera
@@ -104,7 +61,7 @@ const FaceEnrollmentCamera = forwardRef(({
     
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setError('Camera not supported');
-      return;
+      return false;
     }
 
     try {
@@ -123,15 +80,19 @@ const FaceEnrollmentCamera = forwardRef(({
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        videoRef.current.onloadedmetadata = () => {
-          setIsCameraActive(true);
-          console.log('Camera loaded, autoCapture:', autoCapture);
-          if (autoCapture && autoScanActive) {
-            startAutoScan();
-          }
-        };
+        return new Promise<boolean>((resolve) => {
+          videoRef.current!.onloadedmetadata = () => {
+            setIsCameraActive(true);
+            console.log('Camera loaded');
+            if (autoCapture && autoScanActive) {
+              startAutoScan();
+            }
+            resolve(true);
+          };
+        });
       }
       
+      return true;
     } catch (err: any) {
       console.error('Camera error:', err);
       if (err.name === 'NotAllowedError') {
@@ -141,10 +102,24 @@ const FaceEnrollmentCamera = forwardRef(({
       } else {
         setError('Camera error: ' + err.message);
       }
+      return false;
     }
   };
 
-  // Auto-scan
+  // Stop camera
+  const stopCamera = () => {
+    stopAutoScan();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // Start auto-scan
   const startAutoScan = () => {
     if (captureIntervalRef.current) {
       clearInterval(captureIntervalRef.current);
@@ -152,11 +127,11 @@ const FaceEnrollmentCamera = forwardRef(({
     
     setAutoScanActive(true);
     
-    console.log('Starting auto-scan interval:', captureInterval);
+    console.log('Starting auto-scan interval');
     captureIntervalRef.current = setInterval(() => {
       if (isCameraActive && !isCapturing) {
         console.log('Auto-scan triggering capture');
-        handleCapture();
+        handleAutoCapture();
       }
     }, captureInterval);
   };
@@ -169,6 +144,53 @@ const FaceEnrollmentCamera = forwardRef(({
     }
     setAutoScanActive(false);
     console.log('Auto-scan stopped');
+  };
+
+  // Manual capture via ref
+  const handleManualCaptureViaRef = async () => {
+    if (!isCameraActive) {
+      console.log('Camera not active');
+      return {
+        success: false,
+        message: 'Camera not active'
+      };
+    }
+    
+    console.log('Starting manual capture via ref');
+    setIsCapturing(true);
+    
+    // Capture image
+    const imageData = captureImage();
+    
+    if (!imageData) {
+      console.log('Capture failed, no image data');
+      setLastResult({
+        success: false,
+        message: 'Capture failed'
+      });
+      setIsCapturing(false);
+      return {
+        success: false,
+        message: 'Capture failed'
+      };
+    }
+
+    // Return immediately without progress animation for ref calls
+    const result = {
+      success: true,
+      photoUrl: imageData,
+      quality: 0.8,
+      faceScore: 0.7,
+      timestamp: new Date().toISOString(),
+      staff: staff,
+      captureCount: captureCount + 1
+    };
+    
+    console.log('Manual capture complete via ref');
+    setIsCapturing(false);
+    setCaptureCount(prev => prev + 1);
+    
+    return result;
   };
 
   // Capture image helper
@@ -201,7 +223,7 @@ const FaceEnrollmentCamera = forwardRef(({
   };
 
   // Handle auto capture
-  const handleCapture = () => {
+  const handleAutoCapture = () => {
     if (!isCameraActive || isCapturing) {
       console.log('Cannot capture: camera not active or already capturing');
       return;
@@ -274,12 +296,12 @@ const FaceEnrollmentCamera = forwardRef(({
           
           return 100;
         }
-        return prev + 20; // Faster progress (5 steps to 100)
+        return prev + 20;
       });
     }, 100);
   };
 
-  // Manual capture button
+  // Handle manual capture via button
   const handleManualCapture = () => {
     console.log('Manual capture triggered via button');
     if (!isCameraActive) {
@@ -358,7 +380,7 @@ const FaceEnrollmentCamera = forwardRef(({
           
           return 100;
         }
-        return prev + 20; // Faster progress (5 steps to 100)
+        return prev + 20;
       });
     }, 100);
   };
@@ -391,17 +413,6 @@ const FaceEnrollmentCamera = forwardRef(({
       }
     };
   }, []);
-
-  // Update auto-scan based on autoCapture prop
-  useEffect(() => {
-    if (isCameraActive) {
-      if (autoCapture && !autoScanActive) {
-        startAutoScan();
-      } else if (!autoCapture && autoScanActive) {
-        stopAutoScan();
-      }
-    }
-  }, [autoCapture, isCameraActive]);
 
   return (
     <div style={{
@@ -685,4 +696,5 @@ const FaceEnrollmentCamera = forwardRef(({
   );
 });
 
+FaceEnrollmentCamera.displayName = 'FaceEnrollmentCamera';
 export default FaceEnrollmentCamera;
