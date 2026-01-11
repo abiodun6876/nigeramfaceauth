@@ -22,8 +22,7 @@ import dayjs from 'dayjs';
 const { Title, Text } = Typography;
 
 const AttendancePage: React.FC = () => {
-  // Changed from courses to departments
-  const [departments, setDepartments] = useState<any[]>([
+  const [departments] = useState<any[]>([
     { id: 'studio', code: 'STU', name: 'Studio' },
     { id: 'logistics', code: 'LOG', name: 'Logistics' },
     { id: 'bakery', code: 'BAK', name: 'Bakery' },
@@ -39,9 +38,21 @@ const AttendancePage: React.FC = () => {
   const [scanCount, setScanCount] = useState(0);
   const [successfulScans, setSuccessfulScans] = useState(0);
   const [alreadyMarkedScans, setAlreadyMarkedScans] = useState(0);
+  const [mobileInstructions, setMobileInstructions] = useState(false);
   
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const markedStaffRef = useRef<Set<string>>(new Set()); // Changed from students to staff
+  const markedStaffRef = useRef<Set<string>>(new Set());
+
+  // Test camera access
+  const testCameraAccess = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      console.log('✅ Camera access granted');
+      stream.getTracks().forEach(track => track.stop());
+    } catch (error: any) {
+      console.error('❌ Camera error:', error.name, error.message);
+    }
+  };
 
   // Check if staff already marked attendance today
   const checkExistingAttendance = async (staffId: string): Promise<boolean> => {
@@ -51,10 +62,10 @@ const AttendancePage: React.FC = () => {
       const attendanceDate = dayjs().format('YYYY-MM-DD');
       
       const { data, error } = await supabase
-        .from('staff_attendance') // Changed table
+        .from('staff_attendance')
         .select('id')
-        .eq('staff_id', staffId) // Changed field
-        .eq('department', selectedDepartmentData.id) // Changed field
+        .eq('staff_id', staffId)
+        .eq('department', selectedDepartmentData.id)
         .eq('attendance_date', attendanceDate)
         .maybeSingle();
       
@@ -85,9 +96,9 @@ const AttendancePage: React.FC = () => {
       }
 
       const attendanceData = {
-        staff_id: staffData.staff_id, // Changed field
-        staff_name: staffData.name, // Changed field
-        department: selectedDepartmentData.id, // Changed field
+        staff_id: staffData.staff_id,
+        staff_name: staffData.name,
+        department: selectedDepartmentData.id,
         attendance_date: attendanceDate,
         check_in_time: new Date().toISOString(),
         status: 'present',
@@ -98,7 +109,7 @@ const AttendancePage: React.FC = () => {
       };
       
       const { error } = await supabase
-        .from('staff_attendance') // Changed table
+        .from('staff_attendance')
         .insert([attendanceData]);
       
       if (error) throw error;
@@ -113,7 +124,7 @@ const AttendancePage: React.FC = () => {
     }
   };
 
-  // Handle face detection - UPDATED for staff
+  // Handle face detection
   const handleFaceDetection = async (result: any) => {
     if (!result.success || !result.photoUrl || isProcessing || !selectedDepartmentData) return;
     
@@ -133,12 +144,12 @@ const AttendancePage: React.FC = () => {
       
       const bestMatch = matches[0];
       
-      // Get staff data - UPDATED for staff
+      // Get staff data
       const { data: staffData } = await supabase
-        .from('staff') // Changed table
+        .from('staff')
         .select('*')
-        .eq('staff_id', bestMatch.staffId) // Changed field
-        .eq('employment_status', 'active') // Changed field
+        .eq('staff_id', bestMatch.staffId)
+        .eq('employment_status', 'active')
         .maybeSingle();
       
       if (!staffData) {
@@ -149,25 +160,25 @@ const AttendancePage: React.FC = () => {
         return;
       }
       
-      // Record attendance - UPDATED for staff
+      // Record attendance
       const attendanceResult = await recordAttendance(staffData, bestMatch.confidence);
       
       if (attendanceResult.alreadyMarked) {
         setLastScanResult({
           success: false,
           type: 'already_marked',
-          staff: { // Changed from student to staff
+          staff: {
             name: staffData.name,
-            staff_id: staffData.staff_id // Changed field
+            staff_id: staffData.staff_id
           }
         });
         setAlreadyMarkedScans(prev => prev + 1);
       } else if (attendanceResult.success) {
         setLastScanResult({
           success: true,
-          staff: { // Changed from student to staff
+          staff: {
             name: staffData.name,
-            staff_id: staffData.staff_id // Changed field
+            staff_id: staffData.staff_id
           }
         });
         setSuccessfulScans(prev => prev + 1);
@@ -204,22 +215,7 @@ const AttendancePage: React.FC = () => {
     }
     setIsCameraActive(true);
     setLastScanResult(null);
-    markedStaffRef.current.clear(); // Changed from students
-  };
-
-  // Reset scanner
-  const resetScanner = () => {
-    setIsCameraActive(false);
-    setLastScanResult(null);
-    setSelectedDepartment('');
-    setSelectedDepartmentData(null);
-    setScanCount(0);
-    setSuccessfulScans(0);
-    setAlreadyMarkedScans(0);
-    markedStaffRef.current.clear(); // Changed from students
-    if (scanTimeoutRef.current) {
-      clearTimeout(scanTimeoutRef.current);
-    }
+    markedStaffRef.current.clear();
   };
 
   // Back to department selection
@@ -230,8 +226,6 @@ const AttendancePage: React.FC = () => {
   };
 
   useEffect(() => {
-    // No need to fetch departments - using hardcoded ones
-    
     const loadModels = async () => {
       try {
         await faceRecognition.loadModels();
@@ -250,10 +244,23 @@ const AttendancePage: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const hasSeenInstructions = localStorage.getItem('hasSeenMobileInstructions');
+    
+    if (isMobile && !hasSeenInstructions) {
+      const timer = setTimeout(() => {
+        setMobileInstructions(true);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
+
+  useEffect(() => {
     if (selectedDepartment) {
       const dept = departments.find(d => d.id === selectedDepartment);
       setSelectedDepartmentData(dept);
-      markedStaffRef.current.clear(); // Changed from students
+      markedStaffRef.current.clear();
     }
   }, [selectedDepartment, departments]);
 
@@ -262,10 +269,152 @@ const AttendancePage: React.FC = () => {
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#0a1a35', // Futuristic dark blue
+      backgroundColor: '#0a1a35',
       color: '#ffffff'
     }}>
-      {/* Main Content - Fills screen */}
+      {/* Mobile Instructions Overlay */}
+      {mobileInstructions && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          zIndex: 10000,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 20
+        }}>
+          <div style={{
+            backgroundColor: '#0a1a35',
+            padding: 24,
+            borderRadius: 12,
+            maxWidth: 400,
+            textAlign: 'center',
+            border: '2px solid #00aaff',
+            boxShadow: '0 0 30px rgba(0, 170, 255, 0.3)'
+          }}>
+            <Title level={3} style={{ color: '#00ffaa', marginBottom: 16 }}>
+              📱 Mobile Instructions
+            </Title>
+            <Text style={{ color: '#aaccff', display: 'block', marginBottom: 16 }}>
+              For face recognition to work on mobile:
+            </Text>
+            <Space direction="vertical" style={{ textAlign: 'left', marginBottom: 24, width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: 'rgba(0, 255, 150, 0.2)', 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ color: '#00ffaa', fontWeight: 'bold' }}>1</Text>
+                </div>
+                <Text style={{ color: '#fff' }}>Grant camera permission when asked</Text>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: 'rgba(0, 255, 150, 0.2)', 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ color: '#00ffaa', fontWeight: 'bold' }}>2</Text>
+                </div>
+                <Text style={{ color: '#fff' }}>Ensure good lighting on your face</Text>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: 'rgba(0, 255, 150, 0.2)', 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ color: '#00ffaa', fontWeight: 'bold' }}>3</Text>
+                </div>
+                <Text style={{ color: '#fff' }}>Hold phone steady at eye level</Text>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: 'rgba(0, 255, 150, 0.2)', 
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ color: '#00ffaa', fontWeight: 'bold' }}>4</Text>
+                </div>
+                <Text style={{ color: '#fff' }}>Keep face within the frame</Text>
+              </div>
+            </Space>
+            <Button 
+              type="primary" 
+              size="large"
+              onClick={() => {
+                setMobileInstructions(false);
+                localStorage.setItem('hasSeenMobileInstructions', 'true');
+              }}
+              style={{ 
+                width: '100%',
+                backgroundColor: '#00aaff',
+                border: 'none',
+                height: 48,
+                fontSize: 16,
+                fontWeight: 'bold'
+              }}
+            >
+              Got it, let's start!
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Debug Button */}
+      <Button
+        type="text"
+        size="small"
+        onClick={() => {
+          console.group('🔍 Face Recognition Debug');
+          console.log('Face models loaded:', faceModelsLoaded);
+          console.log('Camera active:', isCameraActive);
+          console.log('Processing:', isProcessing);
+          testCameraAccess();
+          console.groupEnd();
+        }}
+        style={{
+          position: 'absolute',
+          bottom: 100,
+          right: 20,
+          zIndex: 1000,
+          opacity: 0.5,
+          color: '#aaccff'
+        }}
+      >
+        Debug
+      </Button>
+
+      {/* Main Content */}
       <div style={{ 
         flex: 1,
         padding: '12px',
@@ -414,7 +563,6 @@ const AttendancePage: React.FC = () => {
               alignItems: 'center',
               gap: 12
             }}>
-              {/* Back Button */}
               <Button
                 icon={<ArrowLeft size={20} />}
                 onClick={handleBack}
@@ -432,7 +580,6 @@ const AttendancePage: React.FC = () => {
                 }}
               />
               
-              {/* Department Badge */}
               <div style={{
                 backgroundColor: 'rgba(0, 150, 255, 0.2)',
                 color: '#00aaff',
@@ -480,7 +627,7 @@ const AttendancePage: React.FC = () => {
               </div>
             </div>
 
-            {/* Camera Feed - Full screen */}
+            {/* Camera Feed */}
             <div style={{ 
               flex: 1,
               minHeight: 0,
@@ -502,7 +649,6 @@ const AttendancePage: React.FC = () => {
                 />
               </div>
 
-              {/* Scan Status Overlay */}
               {isProcessing && (
                 <div style={{
                   position: 'absolute',
@@ -527,7 +673,7 @@ const AttendancePage: React.FC = () => {
               )}
             </div>
 
-            {/* Last Scan Result - Minimal */}
+            {/* Last Scan Result */}
             {lastScanResult && (
               <div style={{
                 position: 'absolute',
@@ -584,7 +730,7 @@ const AttendancePage: React.FC = () => {
         )}
       </div>
 
-      {/* Status Footer - Minimal */}
+      {/* Status Footer */}
       <div style={{ 
         padding: '8px 16px',
         backgroundColor: 'rgba(10, 26, 53, 0.8)',
@@ -615,7 +761,6 @@ const AttendancePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Add CSS animations */}
       <style>
         {`
           @keyframes pulse {

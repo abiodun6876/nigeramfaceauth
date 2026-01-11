@@ -1,0 +1,4 @@
+# public/_headers
+/models/*
+  Content-Type: application/octet-stream
+  Access-Control-Allow-Origin: *

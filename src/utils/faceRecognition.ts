@@ -152,7 +152,7 @@ class FaceRecognition {
     });
   }
   
-  // MAIN FIXED: Extract face descriptor with proper face-api.js usage
+  // Main face descriptor extraction (for enrollment)
   async extractFaceDescriptor(imageData: string): Promise<Float32Array | null> {
     try {
       console.log('🔍 Starting face extraction...');
@@ -236,6 +236,91 @@ class FaceRecognition {
       return await this.extractFaceDescriptorSimple(imageData);
     }
   }
+
+  // Mobile-optimized face descriptor extraction
+  async extractFaceDescriptorMobile(imageData: string): Promise<Float32Array | null> {
+    try {
+      console.log('🔍 Starting face extraction on mobile...');
+      
+      // Ensure models are loaded
+      if (!this.modelsLoaded) {
+        console.log('🔄 Loading models...');
+        await this.loadModels();
+      }
+      
+      // Load image
+      const img = await this.loadImage(imageData);
+      
+      // Mobile optimization: resize if too large
+      const maxSize = 500; // pixels for mobile
+      let canvas: HTMLCanvasElement;
+      
+      if (img.width > maxSize || img.height > maxSize) {
+        canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d')!;
+        
+        const scale = Math.min(maxSize / img.width, maxSize / img.height);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        console.log(`📱 Resized from ${img.width}x${img.height} to ${canvas.width}x${canvas.height}`);
+      } else {
+        canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d')!;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      }
+      
+      // Mobile-optimized detection options
+      const detectionOptions = new faceapi.TinyFaceDetectorOptions({
+        inputSize: 160, // Lower for mobile performance
+        scoreThreshold: 0.4
+      });
+      
+      console.log('🔄 Detecting face on mobile...');
+      
+      const detections = await faceapi
+        .detectAllFaces(canvas, detectionOptions)
+        .withFaceLandmarks(true) // Use tiny landmarks for mobile
+        .withFaceDescriptors();
+      
+      console.log(`✅ Detected ${detections.length} face(s) on mobile`);
+      
+      if (detections.length === 0) {
+        // Try with lower threshold for mobile
+        console.log('🔄 Trying lower threshold for mobile...');
+        const lowThresholdOptions = new faceapi.TinyFaceDetectorOptions({
+          inputSize: 160,
+          scoreThreshold: 0.3
+        });
+        
+        const lowThresholdDetections = await faceapi
+          .detectAllFaces(canvas, lowThresholdOptions)
+          .withFaceLandmarks(true)
+          .withFaceDescriptors();
+        
+        if (lowThresholdDetections.length === 0) {
+          console.log('⚠️ No faces detected even with low threshold');
+          return null;
+        }
+        
+        const bestDetection = lowThresholdDetections[0];
+        console.log(`🎯 Low threshold face confidence: ${bestDetection.detection.score.toFixed(3)}`);
+        return bestDetection.descriptor;
+      }
+      
+      const bestDetection = detections[0];
+      console.log(`🎯 Best face confidence: ${bestDetection.detection.score.toFixed(3)}`);
+      
+      return bestDetection.descriptor;
+      
+    } catch (error) {
+      console.error('❌ Mobile face extraction error:', error);
+      return null;
+    }
+  }
   
   // Simple fallback method
   async extractFaceDescriptorSimple(imageData: string): Promise<Float32Array | null> {
@@ -284,26 +369,11 @@ class FaceRecognition {
     return Array.from(descriptor).map(num => num.toString());
   }
   
-  // Convert embedding from database format
+  // NOTE: This method is not used anymore since we use parseEmbeddingFromDatabase instead
+  // Keeping it for backward compatibility but marking as deprecated
   private convertEmbeddingFromDatabase(embeddingArray: any[]): Float32Array | null {
-    try {
-      if (!Array.isArray(embeddingArray) || embeddingArray.length === 0) {
-        return null;
-      }
-      
-      // Convert string array back to Float32Array
-      const floatArray = new Float32Array(embeddingArray.length);
-      
-      for (let i = 0; i < embeddingArray.length; i++) {
-        const value = embeddingArray[i];
-        floatArray[i] = typeof value === 'string' ? parseFloat(value) : value;
-      }
-      
-      return floatArray;
-    } catch (error) {
-      console.error('Error converting database embedding:', error);
-      return null;
-    }
+    console.warn('⚠️ convertEmbeddingFromDatabase is deprecated. Use parseEmbeddingFromDatabase instead.');
+    return this.parseEmbeddingFromDatabase(embeddingArray);
   }
   
   // Save embedding to database (UPDATED for your schema)
@@ -472,33 +542,62 @@ class FaceRecognition {
     }
   }
   
-  // Match face for attendance
+  // Main face matching method for attendance
   async matchFaceForAttendance(imageData: string) {
+    console.group('🎭 Face Matching Started');
+    
     try {
-      // Extract face descriptor
-      const descriptor = await this.extractFaceDescriptor(imageData);
+      console.log('1. Extracting face descriptor...');
+      
+      // Check if mobile
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      let descriptor: Float32Array | null;
+      
+      if (isMobile) {
+        console.log('📱 Using mobile-optimized extraction');
+        descriptor = await this.extractFaceDescriptorMobile(imageData);
+      } else {
+        console.log('💻 Using standard extraction');
+        descriptor = await this.extractFaceDescriptor(imageData);
+      }
       
       if (!descriptor) {
-        console.log('No face detected in image');
+        console.log('❌ No face detected in image');
+        console.groupEnd();
         return [];
       }
       
-      // Try local storage first
+      console.log(`✅ Face descriptor extracted: ${descriptor.length} dimensions`);
+      
+      console.log('2. Checking local storage...');
       const localMatches = await this.matchWithLocalEmbeddings(descriptor);
+      
       if (localMatches.length > 0 && localMatches[0].confidence > 0.65) {
         console.log(`✅ Found ${localMatches.length} local match(es)`);
+        console.groupEnd();
         return localMatches;
       }
       
-      // Fallback to database
-      console.log('🔄 Checking database for matches...');
+      console.log('3. Checking database...');
       const dbMatches = await this.matchWithDatabase(descriptor);
+      
       console.log(`✅ Found ${dbMatches.length} database match(es)`);
       
+      if (dbMatches.length > 0) {
+        console.log('🏆 Best match:', {
+          staffId: dbMatches[0].staffId,
+          name: dbMatches[0].name,
+          confidence: dbMatches[0].confidence
+        });
+      }
+      
+      console.groupEnd();
       return dbMatches;
       
     } catch (error) {
-      console.error('Error matching face:', error);
+      console.error('❌ Error matching face:', error);
+      console.groupEnd();
       return [];
     }
   }
@@ -553,16 +652,21 @@ class FaceRecognition {
         return matches;
       }
       
+      console.log(`📊 Found ${staffList.length} staff with embeddings`);
+      
       for (const staff of staffList) {
         if (!staff.face_embedding) {
           continue;
         }
         
         try {
-          const staffDescriptor = this.convertEmbeddingFromDatabase(staff.face_embedding);
+          // Parse the embedding from database format
+          const staffDescriptor = this.parseEmbeddingFromDatabase(staff.face_embedding);
           
           if (staffDescriptor) {
             const confidence = this.compareFaces(descriptor, staffDescriptor);
+            
+            console.log(`🔍 Comparing with ${staff.name} (${staff.staff_id}): ${confidence.toFixed(4)}`);
             
             if (confidence > 0.6) {
               matches.push({
@@ -570,13 +674,18 @@ class FaceRecognition {
                 name: staff.name,
                 confidence
               });
+              
+              console.log(`✅ Match found with confidence: ${confidence.toFixed(4)}`);
             }
+          } else {
+            console.warn(`⚠️ Could not parse embedding for ${staff.name}`);
           }
         } catch (compareError) {
-          console.warn(`Could not compare with staff ${staff.staff_id}:`, compareError);
+          console.warn(`❌ Could not compare with staff ${staff.staff_id}:`, compareError);
         }
       }
       
+      console.log(`🎯 Total matches found: ${matches.length}`);
       return matches.sort((a, b) => b.confidence - a.confidence);
       
     } catch (error) {
@@ -584,7 +693,154 @@ class FaceRecognition {
       return matches;
     }
   }
+
+  private parseEmbeddingFromDatabase(embeddingData: any): Float32Array | null {
+    try {
+      console.log('📱 Parsing embedding from database...');
+      
+      if (!embeddingData) {
+        console.log('❌ No embedding data');
+        return null;
+      }
+      
+      let numbers: number[] = [];
+      
+      // Handle the specific format from your data
+      // "[\"-0.03632645308971405\", \"-0.5184420943260193\", ...]"
+      if (typeof embeddingData === 'string') {
+        console.log('Processing string embedding...');
+        
+        if (embeddingData.startsWith('[') && embeddingData.endsWith(']')) {
+          try {
+            // For JSON string format: ["-0.0363", "-0.5184", ...]
+            const cleaned = embeddingData
+              .replace(/[\[\]"]/g, '')  // Remove brackets and quotes
+              .replace(/\s+/g, '');     // Remove whitespace
+            
+            numbers = cleaned.split(',').map(num => {
+              const parsed = parseFloat(num);
+              if (isNaN(parsed)) {
+                console.warn(`Invalid number in embedding: ${num}`);
+                return 0;
+              }
+              return parsed;
+            });
+            
+            console.log(`Parsed ${numbers.length} numbers from JSON string`);
+          } catch (parseError) {
+            console.warn('String parse failed:', parseError);
+            return null;
+          }
+        } else if (embeddingData.includes(',')) {
+          // Plain comma-separated values
+          numbers = embeddingData.split(',').map(num => {
+            const trimmed = num.trim();
+            const parsed = parseFloat(trimmed);
+            return isNaN(parsed) ? 0 : parsed;
+          });
+          console.log(`Parsed ${numbers.length} numbers from CSV string`);
+        } else {
+          console.warn('Unknown string format');
+          return null;
+        }
+      } else if (Array.isArray(embeddingData)) {
+        // Already an array
+        numbers = embeddingData.map(item => {
+          if (typeof item === 'string') {
+            return parseFloat(item) || 0;
+          }
+          return Number(item) || 0;
+        });
+        console.log(`Using existing array with ${numbers.length} items`);
+      } else {
+        console.warn('Unknown embedding data type:', typeof embeddingData);
+        return null;
+      }
+      
+      // Mobile optimization: validate length
+      if (numbers.length !== 128) {
+        console.warn(`⚠️ Length mismatch: ${numbers.length} vs 128`);
+        
+        // Try to fix: if longer, truncate; if shorter, pad with zeros
+        if (numbers.length > 128) {
+          numbers = numbers.slice(0, 128);
+          console.log('Trimmed to 128 values');
+        } else if (numbers.length < 128) {
+          console.log('Padding with zeros');
+          while (numbers.length < 128) {
+            numbers.push(0);
+          }
+        }
+      }
+      
+      // Validate all numbers are finite
+      const validCount = numbers.filter(n => isFinite(n)).length;
+      if (validCount !== numbers.length) {
+        console.warn(`Contains ${numbers.length - validCount} invalid values`);
+        // Replace invalid with 0
+        numbers = numbers.map(n => isFinite(n) ? n : 0);
+      }
+      
+      console.log(`✅ Successfully parsed ${numbers.length} values`);
+      console.log(`📊 Sample: ${numbers.slice(0, 3).map(v => v.toFixed(4)).join(', ')}...`);
+      
+      return new Float32Array(numbers);
+      
+    } catch (error) {
+      console.error('❌ Error parsing embedding:', error);
+      return null;
+    }
+  }
   
+  async testEmbeddingParsing() {
+    try {
+      console.group('🧪 Testing Embedding Parsing');
+      
+      // Fetch a staff member with embedding
+      const { data: staffList } = await supabase
+        .from('staff')
+        .select('staff_id, name, face_embedding')
+        .limit(1);
+      
+      if (!staffList || staffList.length === 0) {
+        console.log('No staff found');
+        console.groupEnd();
+        return;
+      }
+      
+      const staff = staffList[0];
+      console.log(`Testing staff: ${staff.name} (${staff.staff_id})`);
+      console.log('Embedding type:', typeof staff.face_embedding);
+      console.log('Embedding sample:', staff.face_embedding?.substring?.(0, 200) || 'No embedding');
+      
+      // Try to parse it
+      const parsed = this.parseEmbeddingFromDatabase(staff.face_embedding);
+      
+      if (parsed) {
+        console.log(`✅ Successfully parsed embedding! Length: ${parsed.length}`);
+        console.log('First 5 values:', Array.from(parsed.slice(0, 5)).map(v => v.toFixed(4)));
+        
+        // Test with a dummy descriptor
+        const dummyDescriptor = new Float32Array(128).fill(0);
+        const confidence = this.compareFaces(dummyDescriptor, parsed);
+        console.log(`Comparison test confidence: ${confidence.toFixed(4)}`);
+      } else {
+        console.log('❌ Failed to parse embedding');
+      }
+      
+      console.groupEnd();
+      
+    } catch (error) {
+      console.error('Test error:', error);
+      console.groupEnd();
+    }
+  }
+
+  // Add to public methods
+  public async testDatabaseEmbeddings() {
+    return this.testEmbeddingParsing();
+  }
+
   // Get status
   getStatus() {
     return {
@@ -599,6 +855,45 @@ class FaceRecognition {
   isModelsLoaded(): boolean {
     return this.modelsLoaded;
   }
+
+  // Add mobile debug method
+  public async mobileDebug(imageData?: string) {
+    console.group('📱 MOBILE DEBUG');
+    
+    // Check browser capabilities
+    console.log('Browser Info:', {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      isMobile: /iPhone|iPad|iPod|Android/i.test(navigator.userAgent),
+      isSecure: window.location.protocol === 'https:',
+      hasCamera: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)
+    });
+    
+    // Check models
+    console.log('Models loaded:', this.modelsLoaded);
+    
+    // Test embedding parsing
+    await this.testDatabaseEmbeddings();
+    
+    if (imageData) {
+      console.log('Testing face extraction...');
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const descriptor = isMobile 
+        ? await this.extractFaceDescriptorMobile(imageData)
+        : await this.extractFaceDescriptor(imageData);
+      console.log('Face extraction result:', descriptor ? 'Success' : 'Failed');
+    }
+    
+    console.groupEnd();
+  }
 }
 
-export default FaceRecognition.getInstance();
+// Create singleton instance
+const faceRecognitionInstance = FaceRecognition.getInstance();
+
+// Make it accessible via window for easy testing
+if (typeof window !== 'undefined') {
+  (window as any).faceRecognitionDebug = faceRecognitionInstance;
+}
+
+export default faceRecognitionInstance;

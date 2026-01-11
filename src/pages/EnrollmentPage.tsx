@@ -1561,7 +1561,7 @@ const testFaceDetectionDirectly = async () => {
           <span style={{ color: '#aaccff' }}>
             {dayjs().format('HH:mm:ss')}
           </span>
-          // Add this button to your camera footer area
+         
 {process.env.NODE_ENV === 'development' && capturedImage && (
   <Button
     type="default"
