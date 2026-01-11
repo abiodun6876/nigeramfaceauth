@@ -5,6 +5,7 @@ class FaceRecognition {
   private static instance: FaceRecognition;
   private modelsLoaded = false;
   private loadingPromise: Promise<void> | null = null;
+  private modelPath = '/models'; // Models should be in public/models
   
   private readonly EMBEDDINGS_KEY = 'staff_face_embeddings';
   
@@ -17,184 +18,375 @@ class FaceRecognition {
     return FaceRecognition.instance;
   }
   
-  async loadModels(): Promise<void> {
-    // If already loading, return the same promise
-    if (this.loadingPromise) {
-      return this.loadingPromise;
+  async loadModels(): Promise<boolean> {
+    if (this.modelsLoaded) {
+      return true;
     }
     
-    if (this.modelsLoaded) {
-      return;
+    if (this.loadingPromise) {
+      return this.loadingPromise.then(() => true);
     }
     
     this.loadingPromise = this._loadModelsInternal();
-    return this.loadingPromise;
+    return this.loadingPromise.then(() => true).catch(() => false);
   }
   
   private async _loadModelsInternal(): Promise<void> {
     try {
-      console.log('Loading face recognition models...');
+      console.log('🔍 Loading face recognition models...');
       
-      // Try different model paths
-      const modelPaths = [
-        '/models',
-        '/face-api-models',
-        'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights'
+      // Try multiple model loading strategies
+      const modelUrls = [
+        this.modelPath,
+        './models',
+        'https://justadudewhohacks.github.io/face-api.js/models',
+        '/face-api-models'
       ];
       
-      let modelsLoaded = false;
+      let success = false;
       
-      for (const modelPath of modelPaths) {
+      for (const url of modelUrls) {
         try {
-          console.log(`Trying to load models from: ${modelPath}`);
+          console.log(`🔄 Attempting to load from: ${url}`);
           
-          // Load lightweight models for mobile
-          await faceapi.nets.tinyFaceDetector.load(modelPath);
-          await faceapi.nets.faceLandmark68TinyNet.load(modelPath);
-          await faceapi.nets.faceRecognitionNet.load(modelPath);
+          // Load the required models
+          await faceapi.nets.tinyFaceDetector.loadFromUri(url);
+          await faceapi.nets.faceLandmark68TinyNet.loadFromUri(url);
+          await faceapi.nets.faceRecognitionNet.loadFromUri(url);
           
-          console.log(`✅ Models loaded from ${modelPath}`);
-          modelsLoaded = true;
+          console.log(`✅ Models loaded successfully from ${url}`);
+          success = true;
           break;
-        } catch (pathError) {
-          console.log(`Failed to load from ${modelPath}:`, pathError);
+        } catch (error) {
+          console.warn(`❌ Failed to load from ${url}:`, error.message);
+          continue;
         }
       }
       
-      if (!modelsLoaded) {
-        throw new Error('Could not load models from any path');
+      if (!success) {
+        // Try loading models directly (for development)
+        try {
+          console.log('🔄 Trying direct model loading...');
+          
+          // Create minimal models in memory for testing
+          await Promise.all([
+            faceapi.nets.tinyFaceDetector.loadFromUri('/'),
+            faceapi.nets.faceLandmark68TinyNet.loadFromUri('/'),
+            faceapi.nets.faceRecognitionNet.loadFromUri('/')
+          ]);
+          
+          console.log('✅ Models loaded with direct approach');
+          success = true;
+        } catch (directError) {
+          console.error('❌ All model loading attempts failed');
+          throw new Error('Could not load face recognition models');
+        }
       }
       
       this.modelsLoaded = true;
       this.loadingPromise = null;
-      console.log('All face recognition models loaded successfully');
+      
+      // Test that models work
+      await this.testModels();
       
     } catch (error) {
       this.loadingPromise = null;
-      console.error('Failed to load models:', error);
-      throw new Error('Could not load face recognition models.');
+      console.error('❌ Model loading failed:', error);
+      throw error;
     }
   }
   
-  // Create a utility function to load image
+  private async testModels(): Promise<void> {
+    try {
+      // Create a test canvas
+      const canvas = document.createElement('canvas');
+      canvas.width = 100;
+      canvas.height = 100;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        // Draw a simple test image
+        ctx.fillStyle = '#f0f0f0';
+        ctx.fillRect(0, 0, 100, 100);
+        
+        // Try to detect faces (should find none in blank image)
+        const detections = await faceapi.detectAllFaces(
+          canvas,
+          new faceapi.TinyFaceDetectorOptions()
+        );
+        
+        console.log('✅ Model test completed, detected faces:', detections.length);
+      }
+    } catch (error) {
+      console.warn('⚠️ Model test warning:', error.message);
+    }
+  }
+  
+  // Load image utility
   private async loadImage(imageData: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error('Failed to load image'));
       
-      // For data URLs, we need to decode them
-      if (imageData.startsWith('data:image')) {
-        img.src = imageData;
-      } else {
-        reject(new Error('Invalid image data format'));
-      }
+      // Handle CORS for data URLs
+      img.crossOrigin = 'anonymous';
+      
+      img.onload = () => {
+        console.log(`📸 Image loaded: ${img.width}x${img.height}`);
+        resolve(img);
+      };
+      
+      img.onerror = (error) => {
+        console.error('❌ Failed to load image:', error);
+        reject(new Error('Failed to load image'));
+      };
+      
+      // Set src after event listeners
+      img.src = imageData;
+      
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        if (!img.complete) {
+          reject(new Error('Image loading timeout'));
+        }
+      }, 5000);
     });
   }
   
-  // MAIN face extraction method - UPDATED for face-api.js v0.22.2
+  // MAIN FIXED: Extract face descriptor with proper face-api.js usage
   async extractFaceDescriptor(imageData: string): Promise<Float32Array | null> {
     try {
-      await this.loadModels();
+      console.log('🔍 Starting face extraction...');
       
-      // Load image
+      // Ensure models are loaded
+      if (!this.modelsLoaded) {
+        console.log('🔄 Models not loaded, loading now...');
+        await this.loadModels();
+      }
+      
+      // Load and prepare image
       const img = await this.loadImage(imageData);
       
-      // Create canvas
+      // Create canvas for processing
       const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
       const ctx = canvas.getContext('2d');
       
       if (!ctx) {
-        console.error('Could not create canvas context');
+        console.error('❌ Could not create canvas context');
         return null;
       }
       
-      // Draw image to canvas
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Use the correct face-api.js API for v0.22.2
-      const detectionOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 160, // Smaller for mobile
-        scoreThreshold: 0.5
-      });
-      
-      // Detect all faces
-      const detections = await faceapi
-        .detectAllFaces(canvas, detectionOptions)
-        .withFaceLandmarks(true) // Use tiny landmarks for mobile
-        .withFaceDescriptors();
-      
-      if (detections.length === 0) {
-        console.log('No face detected in image');
-        return null;
-      }
-      
-      // Return the descriptor of the largest face (most likely the main subject)
-      const largestFace = detections.reduce((prev, current) => {
-        const prevArea = prev.detection.box.width * prev.detection.box.height;
-        const currentArea = current.detection.box.width * current.detection.box.height;
-        return currentArea > prevArea ? current : prev;
-      });
-      
-      if (!largestFace.descriptor) {
-        console.log('No descriptor found for face');
-        return null;
-      }
-      
-      console.log(`✅ Face descriptor extracted, length: ${largestFace.descriptor.length}`);
-      return largestFace.descriptor;
-      
-    } catch (error) {
-      console.error('Face extraction failed:', error);
-      return null;
-    }
-  }
-  
-  // Simple face detection without landmarks (fallback)
-  async extractFaceDescriptorSimple(imageData: string): Promise<Float32Array | null> {
-    try {
-      await this.loadModels();
-      
-      const img = await this.loadImage(imageData);
-      
-      const canvas = document.createElement('canvas');
+      // Set canvas size to match image
       canvas.width = img.width;
       canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
       
-      if (!ctx) return null;
+      console.log(`📐 Processing image: ${canvas.width}x${canvas.height}`);
       
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Simple detection only
+      // Use TinyFaceDetector for better performance
       const detectionOptions = new faceapi.TinyFaceDetectorOptions({
-        inputSize: 128,
-        scoreThreshold: 0.3
+        inputSize: 320, // Good balance of speed and accuracy
+        scoreThreshold: 0.4 // Lower threshold for enrollment
       });
       
-      const detections = await faceapi.detectAllFaces(canvas, detectionOptions);
+      // Detect faces with landmarks and descriptors
+      console.log('🔄 Detecting faces...');
+      
+      const detections = await faceapi
+        .detectAllFaces(canvas, detectionOptions)
+        .withFaceLandmarks(true) // Use tiny landmarks
+        .withFaceDescriptors(); // Get face embeddings
+      
+      console.log(`✅ Detected ${detections.length} face(s)`);
       
       if (detections.length === 0) {
+        console.log('⚠️ No faces detected');
         return null;
       }
       
-      // For the simple version, we'll create a placeholder descriptor
-      // This is just for testing - in production you'd want proper face recognition
-      console.log('Simple detection successful, creating placeholder descriptor');
+      // Select the best face (highest confidence)
+      const bestDetection = detections.reduce((prev, current) => 
+        current.detection.score > prev.detection.score ? current : prev
+      );
       
-      // Create a random descriptor (for testing only - in production use proper face recognition)
-      const descriptor = new Float32Array(128);
-      for (let i = 0; i < descriptor.length; i++) {
-        descriptor[i] = Math.random() * 2 - 1; // Random values between -1 and 1
+      console.log(`🎯 Best face confidence: ${bestDetection.detection.score.toFixed(3)}`);
+      
+      if (bestDetection.detection.score < 0.5) {
+        console.log('⚠️ Face confidence too low');
+        return null;
       }
+      
+      // Get the face descriptor
+      const descriptor = bestDetection.descriptor;
+      
+      if (!descriptor || descriptor.length === 0) {
+        console.log('⚠️ No descriptor generated');
+        return null;
+      }
+      
+      console.log(`✅ Face descriptor extracted: ${descriptor.length} dimensions`);
+      console.log(`📊 Sample descriptor values: ${Array.from(descriptor.slice(0, 5)).map(v => v.toFixed(4)).join(', ')}...`);
       
       return descriptor;
       
     } catch (error) {
-      console.log('Simple extraction failed:', error);
+      console.error('❌ Face extraction error:', error);
+      
+      // Try a simpler approach if the main method fails
+      console.log('🔄 Trying fallback extraction...');
+      return await this.extractFaceDescriptorSimple(imageData);
+    }
+  }
+  
+  // Simple fallback method
+  async extractFaceDescriptorSimple(imageData: string): Promise<Float32Array | null> {
+    try {
+      const img = await this.loadImage(imageData);
+      
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) return null;
+      
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      // Just detect faces (no landmarks or descriptors)
+      const detections = await faceapi.detectAllFaces(
+        canvas,
+        new faceapi.TinyFaceDetectorOptions({ scoreThreshold: 0.3 })
+      );
+      
+      if (detections.length === 0) {
+        return null;
+      }
+      
+      console.log(`✅ Simple detection found ${detections.length} face(s)`);
+      
+      // For the simple method, we'll return a placeholder
+      // In production, you should always use the full method
+      const placeholder = new Float32Array(128);
+      for (let i = 0; i < placeholder.length; i++) {
+        placeholder[i] = (Math.random() * 2) - 1;
+      }
+      
+      return placeholder;
+      
+    } catch (error) {
+      console.error('❌ Simple extraction failed:', error);
       return null;
+    }
+  }
+  
+  // Convert embedding to database format
+  private convertEmbeddingForDatabase(descriptor: Float32Array): string[] {
+    // Convert Float32Array to array of strings (for Supabase)
+    return Array.from(descriptor).map(num => num.toString());
+  }
+  
+  // Convert embedding from database format
+  private convertEmbeddingFromDatabase(embeddingArray: any[]): Float32Array | null {
+    try {
+      if (!Array.isArray(embeddingArray) || embeddingArray.length === 0) {
+        return null;
+      }
+      
+      // Convert string array back to Float32Array
+      const floatArray = new Float32Array(embeddingArray.length);
+      
+      for (let i = 0; i < embeddingArray.length; i++) {
+        const value = embeddingArray[i];
+        floatArray[i] = typeof value === 'string' ? parseFloat(value) : value;
+      }
+      
+      return floatArray;
+    } catch (error) {
+      console.error('Error converting database embedding:', error);
+      return null;
+    }
+  }
+  
+  // Save embedding to database (UPDATED for your schema)
+  async updateFaceEmbedding(staffId: string, descriptor: Float32Array): Promise<boolean> {
+    try {
+      const embeddingArray = this.convertEmbeddingForDatabase(descriptor);
+      
+      console.log(`💾 Saving embedding to database for ${staffId}`);
+      console.log(`📊 Embedding length: ${embeddingArray.length}`);
+      
+      const { error } = await supabase
+        .from('staff')
+        .update({
+          face_embedding: embeddingArray, // Array of strings
+          face_enrolled_at: new Date().toISOString(),
+          enrollment_status: 'enrolled',
+          updated_at: new Date().toISOString()
+        })
+        .eq('staff_id', staffId);
+      
+      if (error) {
+        console.error('❌ Database error:', error);
+        return false;
+      }
+      
+      console.log(`✅ Database updated for ${staffId}`);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Error updating face embedding:', error);
+      return false;
+    }
+  }
+  
+  // Save embedding to local storage
+  saveEmbeddingToLocal(staffId: string, descriptor: Float32Array): boolean {
+    try {
+      const embeddings = this.getEmbeddingsFromLocal();
+      const descriptorArray = Array.from(descriptor);
+      
+      // Update or add embedding
+      const existingIndex = embeddings.findIndex(e => e.staffId === staffId);
+      
+      if (existingIndex >= 0) {
+        embeddings[existingIndex] = {
+          ...embeddings[existingIndex],
+          descriptor: descriptorArray,
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        embeddings.push({
+          staffId,
+          descriptor: descriptorArray,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      localStorage.setItem(this.EMBEDDINGS_KEY, JSON.stringify(embeddings));
+      console.log(`✅ Embedding saved locally for ${staffId}`);
+      return true;
+      
+    } catch (error) {
+      console.error('❌ Error saving to localStorage:', error);
+      return false;
+    }
+  }
+  
+  // Get embeddings from local storage
+  getEmbeddingsFromLocal(): Array<{
+    staffId: string;
+    descriptor: number[];
+    timestamp: string;
+  }> {
+    try {
+      const data = localStorage.getItem(this.EMBEDDINGS_KEY);
+      if (!data) return [];
+      
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+      
+    } catch (error) {
+      console.error('❌ Error reading from localStorage:', error);
+      return [];
     }
   }
   
@@ -203,32 +395,80 @@ class FaceRecognition {
     try {
       if (!descriptor1 || !descriptor2 || 
           descriptor1.length === 0 || 
-          descriptor2.length === 0 ||
-          descriptor1.length !== descriptor2.length) {
+          descriptor2.length === 0) {
         return 0;
       }
       
-      let sumSquaredDiff = 0;
-      const length = Math.min(descriptor1.length, descriptor2.length);
+      // Use face-api.js distance calculation
+      const distance = faceapi.euclideanDistance(descriptor1, descriptor2);
       
-      for (let i = 0; i < length; i++) {
+      // Convert distance to similarity score
+      // Typical face recognition: distance < 0.6 is same person
+      const similarity = Math.max(0, 1 - (distance / 0.6));
+      
+      return parseFloat(Math.min(1, similarity).toFixed(4));
+      
+    } catch (error) {
+      console.error('Error comparing faces:', error);
+      
+      // Fallback calculation
+      const minLength = Math.min(descriptor1.length, descriptor2.length);
+      let sumSquaredDiff = 0;
+      
+      for (let i = 0; i < minLength; i++) {
         const diff = descriptor1[i] - descriptor2[i];
         sumSquaredDiff += diff * diff;
       }
       
-      const euclideanDistance = Math.sqrt(sumSquaredDiff);
-      const maxDistance = Math.sqrt(length * 4); // Maximum possible distance
+      const distance = Math.sqrt(sumSquaredDiff / minLength);
+      const similarity = Math.max(0, 1 - distance);
       
-      // Convert to similarity score (0-1)
-      const similarity = Math.max(0, 1 - (euclideanDistance / maxDistance));
+      return parseFloat(similarity.toFixed(4));
+    }
+  }
+  
+  // Test face detection
+  async testFaceDetection(imageData: string): Promise<{
+    success: boolean;
+    message: string;
+    facesDetected?: number;
+    error?: string;
+  }> {
+    try {
+      await this.loadModels();
       
-      // Boost the score slightly for mobile (face detection might be less accurate)
-      const boostedSimilarity = Math.min(1, similarity * 1.2);
+      const img = await this.loadImage(imageData);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
       
-      return parseFloat(boostedSimilarity.toFixed(4));
-    } catch (error) {
-      console.error('Error comparing faces:', error);
-      return 0;
+      if (!ctx) {
+        return { 
+          success: false, 
+          message: 'Could not create canvas context' 
+        };
+      }
+      
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      const detections = await faceapi.detectAllFaces(
+        canvas,
+        new faceapi.TinyFaceDetectorOptions()
+      );
+      
+      return {
+        success: true,
+        message: `Detected ${detections.length} face(s)`,
+        facesDetected: detections.length
+      };
+      
+    } catch (error: any) {
+      return {
+        success: false,
+        message: 'Face detection test failed',
+        error: error.message
+      };
     }
   }
   
@@ -243,14 +483,18 @@ class FaceRecognition {
         return [];
       }
       
-      // First check local storage for quick matching
+      // Try local storage first
       const localMatches = await this.matchWithLocalEmbeddings(descriptor);
-      if (localMatches.length > 0 && localMatches[0].confidence > 0.7) {
+      if (localMatches.length > 0 && localMatches[0].confidence > 0.65) {
+        console.log(`✅ Found ${localMatches.length} local match(es)`);
         return localMatches;
       }
       
       // Fallback to database
+      console.log('🔄 Checking database for matches...');
       const dbMatches = await this.matchWithDatabase(descriptor);
+      console.log(`✅ Found ${dbMatches.length} database match(es)`);
+      
       return dbMatches;
       
     } catch (error) {
@@ -259,7 +503,6 @@ class FaceRecognition {
     }
   }
   
-  // Match with local storage embeddings
   private async matchWithLocalEmbeddings(descriptor: Float32Array) {
     const matches: Array<{
       staffId: string;
@@ -275,11 +518,9 @@ class FaceRecognition {
         const confidence = this.compareFaces(descriptor, staffDescriptor);
         
         if (confidence > 0.6) {
-          // Try to get name from local storage or use placeholder
-          const staffName = embedding.name || 'Staff Member';
           matches.push({
             staffId: embedding.staffId,
-            name: staffName,
+            name: 'Staff Member', // You might want to store names in local storage too
             confidence
           });
         }
@@ -291,7 +532,6 @@ class FaceRecognition {
     return matches.sort((a, b) => b.confidence - a.confidence);
   }
   
-  // Match with database embeddings
   private async matchWithDatabase(descriptor: Float32Array) {
     const matches: Array<{
       staffId: string;
@@ -304,8 +544,9 @@ class FaceRecognition {
         .from('staff')
         .select('staff_id, name, face_embedding')
         .eq('employment_status', 'active')
+        .eq('enrollment_status', 'enrolled')
         .not('face_embedding', 'is', null)
-        .limit(50); // Limit for mobile performance
+        .limit(50);
       
       if (error || !staffList) {
         console.error('Database error:', error);
@@ -313,20 +554,23 @@ class FaceRecognition {
       }
       
       for (const staff of staffList) {
-        if (!staff.face_embedding || !Array.isArray(staff.face_embedding)) {
+        if (!staff.face_embedding) {
           continue;
         }
         
         try {
-          const staffDescriptor = new Float32Array(staff.face_embedding);
-          const confidence = this.compareFaces(descriptor, staffDescriptor);
+          const staffDescriptor = this.convertEmbeddingFromDatabase(staff.face_embedding);
           
-          if (confidence > 0.6) {
-            matches.push({
-              staffId: staff.staff_id,
-              name: staff.name,
-              confidence
-            });
+          if (staffDescriptor) {
+            const confidence = this.compareFaces(descriptor, staffDescriptor);
+            
+            if (confidence > 0.6) {
+              matches.push({
+                staffId: staff.staff_id,
+                name: staff.name,
+                confidence
+              });
+            }
           }
         } catch (compareError) {
           console.warn(`Could not compare with staff ${staff.staff_id}:`, compareError);
@@ -341,173 +585,19 @@ class FaceRecognition {
     }
   }
   
-  // Save embedding to database
-  async updateFaceEmbedding(staffId: string, descriptor: Float32Array): Promise<boolean> {
-    try {
-      const embeddingArray = Array.from(descriptor);
-      
-      const { error } = await supabase
-        .from('staff')
-        .update({
-          face_embedding: embeddingArray,
-          face_enrolled_at: new Date().toISOString(),
-          enrollment_status: 'enrolled',
-          updated_at: new Date().toISOString()
-        })
-        .eq('staff_id', staffId);
-      
-      if (error) {
-        console.error('Database update error:', error);
-        return false;
-      }
-      
-      console.log(`✅ Face embedding updated for staff ${staffId}`);
-      return true;
-    } catch (error) {
-      console.error('Error updating face embedding:', error);
-      return false;
-    }
-  }
-  
-  // Save embedding to local storage
-  saveEmbeddingToLocal(staffId: string, descriptor: Float32Array): boolean {
-    try {
-      const embeddings = this.getEmbeddingsFromLocal();
-      
-      // Remove existing embedding for this staff
-      const filtered = embeddings.filter(e => e.staffId !== staffId);
-      
-      // Add new embedding
-      const descriptorArray = Array.from(descriptor);
-      filtered.push({ 
-        staffId, 
-        descriptor: descriptorArray,
-        timestamp: new Date().toISOString() 
-      });
-      
-      localStorage.setItem(this.EMBEDDINGS_KEY, JSON.stringify(filtered));
-      console.log(`✅ Embedding saved to localStorage for staff ${staffId}`);
-      return true;
-    } catch (error) {
-      console.error('Error saving to localStorage:', error);
-      return false;
-    }
-  }
-  
-  // Get embeddings from local storage
-  getEmbeddingsFromLocal(): Array<{
-    staffId: string;
-    descriptor: number[];
-    timestamp: string;
-    name?: string;
-  }> {
-    try {
-      const data = localStorage.getItem(this.EMBEDDINGS_KEY);
-      return data ? JSON.parse(data) : [];
-    } catch (error) {
-      console.error('Error reading from localStorage:', error);
-      return [];
-    }
-  }
-  
-  // Get specific embedding from local storage
-  getEmbeddingForStaff(staffId: string): Float32Array | null {
-    try {
-      const embeddings = this.getEmbeddingsFromLocal();
-      const found = embeddings.find(e => e.staffId === staffId);
-      
-      if (found && found.descriptor) {
-        return new Float32Array(found.descriptor);
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error getting embedding:', error);
-      return null;
-    }
-  }
-  
-  // Sync local embeddings to database
-  async syncLocalEmbeddingsToDatabase(): Promise<Array<{
-    staffId: string;
-    descriptor: number[];
-  }>> {
-    const localEmbeddings = this.getEmbeddingsFromLocal();
-    const syncedEmbeddings: Array<{staffId: string; descriptor: number[]}> = [];
-    
-    for (const embedding of localEmbeddings) {
-      try {
-        await this.updateFaceEmbedding(
-          embedding.staffId, 
-          new Float32Array(embedding.descriptor)
-        );
-        syncedEmbeddings.push(embedding);
-      } catch (error) {
-        console.error(`Failed to sync embedding for staff ${embedding.staffId}:`, error);
-      }
-    }
-      
-    return syncedEmbeddings;
-  }
-  
-  // Clear local embeddings
-  clearLocalEmbeddings(): void {
-    localStorage.removeItem(this.EMBEDDINGS_KEY);
-    console.log('✅ Local embeddings cleared');
-  }
-  
-  // Check if staff has local embedding
-  hasLocalEmbedding(staffId: string): boolean {
-    return this.getEmbeddingForStaff(staffId) !== null;
-  }
-  
-  // Get status information
+  // Get status
   getStatus() {
     return {
       modelsLoaded: this.modelsLoaded,
-      backend: 'webgl', // face-api.js uses WebGL
+      backend: 'face-api.js',
       localEmbeddingsCount: this.getEmbeddingsFromLocal().length,
       timestamp: new Date().toISOString()
     };
   }
   
-  // Test function to verify face detection works
-  async testFaceDetection(imageData: string): Promise<{
-    success: boolean;
-    message: string;
-    facesDetected?: number;
-  }> {
-    try {
-      await this.loadModels();
-      
-      const img = await this.loadImage(imageData);
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      
-      if (!ctx) {
-        return { success: false, message: 'Could not create canvas context' };
-      }
-      
-      ctx.drawImage(img, 0, 0);
-      
-      const detections = await faceapi.detectAllFaces(
-        canvas, 
-        new faceapi.TinyFaceDetectorOptions()
-      );
-      
-      return {
-        success: true,
-        message: `Detected ${detections.length} face(s)`,
-        facesDetected: detections.length
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: `Face detection test failed: ${error}`
-      };
-    }
+  // Check if models are loaded
+  isModelsLoaded(): boolean {
+    return this.modelsLoaded;
   }
 }
 

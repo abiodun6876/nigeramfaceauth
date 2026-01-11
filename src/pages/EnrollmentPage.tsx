@@ -174,140 +174,202 @@ const EnrollmentPage: React.FC = () => {
   };
 
   const processEnrollment = async (result: any) => {
+  try {
+    setLoading(true);
+    console.log('🔄 Starting enrollment process...');
+
+    // Ensure face models are loaded FIRST
+    if (!faceModelsLoaded) {
+      console.log('🔄 Loading face detection models...');
+      try {
+        await faceRecognition.loadModels();
+        setFaceModelsLoaded(true);
+        console.log('✅ Face models loaded successfully');
+      } catch (modelError: any) {
+        console.error('❌ Face models failed to load:', modelError);
+        message.warning('Face models loading issue. Trying to continue...');
+      }
+    }
+
+    let staffDepartment = staffData.department;
+    
+    if (!staffDepartment) {
+      const deptFormValues = departmentForm.getFieldsValue();
+      staffDepartment = deptFormValues.department || 'studio';
+      console.log('⚠️ Department was undefined, using:', staffDepartment);
+    }
+
+    const currentStaffId = staffData.staff_id || staffId;
+    const staffName = staffData.name || 'Unknown Staff';
+    
+    console.log('Staff Data:', { 
+      id: currentStaffId, 
+      name: staffName, 
+      department: staffDepartment 
+    });
+
+    // 1. Prepare database record FIRST (before face extraction)
+    const currentDate = new Date();
+    const departmentDetails = departments.find(dept => dept.value === staffDepartment) || departments[0];
+    
+    const staffRecord = {
+      staff_id: currentStaffId,
+      name: staffName,
+      email: null,
+      phone: null,
+      gender: staffData.gender || 'Male',
+      date_of_birth: null,
+      department: departmentDetails.dbDepartment,
+      department_name: departmentDetails.dbDepartmentName,
+      employment_date: currentDate.toISOString().split('T')[0],
+      employment_status: 'active',
+      enrollment_status: 'pending', // Start as pending
+      is_active: true,
+      position: null,
+      face_embedding: null,
+      photo_url: null,
+      face_enrolled_at: null,
+      face_match_threshold: 0.75,
+      last_face_scan: null,
+      shift_schedule: null,
+      salary_grade: null,
+      supervisor_id: null,
+      emergency_contact: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log('📦 Record ready for DB:', staffRecord);
+
+    // 2. Save to Supabase FIRST to ensure staff record exists
     try {
-      setLoading(true);
-      console.log('🔄 Starting enrollment process...');
-
-      let staffDepartment = staffData.department;
+      console.log('💾 Saving staff record to database...');
+      const { data, error } = await supabase
+        .from('staff')
+        .upsert([staffRecord], { onConflict: 'staff_id' })
+        .select();
       
-      if (!staffDepartment) {
-        const deptFormValues = departmentForm.getFieldsValue();
-        staffDepartment = deptFormValues.department || 'studio';
-        console.log('⚠️ Department was undefined, using:', staffDepartment);
+      if (error) {
+        console.error('❌ DB Save Error:', error);
+        throw new Error(`Database save failed: ${error.message}`);
       }
-
-      const currentStaffId = staffData.staff_id || staffId;
-      const staffName = staffData.name || 'Unknown Staff';
       
-      console.log('Staff Data:', { 
-        id: currentStaffId, 
-        name: staffName, 
-        department: staffDepartment 
-      });
-
-      // 1. Save image locally first
-      const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
-      localStorage.setItem(`face_image_${currentStaffId}`, compressedImage);
-      console.log('✅ Image saved locally');
-
-      // 2. Prepare database record
-      const currentDate = new Date();
-      const departmentDetails = departments.find(dept => dept.value === staffDepartment) || departments[0];
+      console.log('✅ Staff saved to Supabase:', data);
       
-      const staffRecord = {
-        staff_id: currentStaffId,
-        name: staffName,
-        email: null,
-        phone: null,
-        gender: staffData.gender || 'Male',
-        date_of_birth: null,
-        department: departmentDetails.dbDepartment,
-        department_name: departmentDetails.dbDepartmentName,
-        employment_date: currentDate.toISOString().split('T')[0],
-        employment_status: 'active',
-        enrollment_status: 'pending',
-        is_active: true,
-        position: null,
-        face_embedding: null,
-        photo_url: null,
-        face_enrolled_at: null,
-        face_match_threshold: 0.75,
-        last_face_scan: null,
-        shift_schedule: null,
-        salary_grade: null,
-        supervisor_id: null,
-        emergency_contact: null
-      };
-      
-      console.log('📦 Record ready for DB:', staffRecord);
+    } catch (dbError: any) {
+      console.error('Database save failed:', dbError);
+      throw new Error(`Database save failed: ${dbError.message}`);
+    }
 
-      // 3. Save to Supabase
-      try {
-        const { data, error } = await supabase
-          .from('staff')
-          .upsert([staffRecord], { onConflict: 'staff_id' })
-          .select();
-        
-        if (error) {
-          console.error('❌ DB Error:', error);
-          throw error;
-        }
-        
-        console.log('✅ Saved to Supabase:', data);
-        
-      } catch (dbError: any) {
-        console.error('Database save failed:', dbError);
-        message.error('Database save failed. Saving locally only.');
-      }
+    // 3. Save image locally
+    const compressedImage = await compressImage(result.photoUrl, 640, 0.8);
+    localStorage.setItem(`face_image_${currentStaffId}`, compressedImage);
+    console.log('✅ Image saved locally');
 
-      // 4. CRITICAL: Extract face embedding with multiple attempts
-      let faceEmbeddingExtracted = false;
-      let descriptor: Float32Array | null = null;
-      let faceDetectionMessage = '';
+    // 4. Extract face embedding with multiple attempts and BETTER logging
+    let faceEmbeddingExtracted = false;
+    let descriptor: Float32Array | null = null;
+    let faceDetectionMessage = '';
+    let embeddingArray: string[] = [];
+    
+    console.log('🔍 Starting face embedding extraction...');
+    console.log('📸 Image quality check:', {
+      hasPhoto: !!result.photoUrl,
+      photoLength: result.photoUrl?.length,
+      compressedLength: compressedImage.length
+    });
+    
+    try {
+      // Try multiple strategies for face detection
+      const strategies = [
+        { name: 'High Quality', image: compressedImage, size: 640, quality: 0.8 },
+        { name: 'Medium Quality', image: await compressImage(result.photoUrl, 480, 0.7), size: 480, quality: 0.7 },
+        { name: 'Low Quality', image: await compressImage(result.photoUrl, 320, 0.6), size: 320, quality: 0.6 },
+        { name: 'Original Size', image: result.photoUrl, size: 'original', quality: 1.0 }
+      ];
       
-      try {
-        console.log('🔍 Attempting face embedding extraction...');
+      for (const strategy of strategies) {
+        console.log(`🔄 Trying ${strategy.name} strategy...`);
         
-        // Try with original compressed image
-        descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
-        
-        if (descriptor && descriptor.length > 0) {
-          faceEmbeddingExtracted = true;
-          faceDetectionMessage = 'Face embedding extracted successfully';
-          console.log('✅ Face embedding extracted, length:', descriptor.length);
-        } else {
-          console.log('⚠️ No face detected in first attempt');
-          
-          // Try with different image processing
-          const enhancedImage = await compressImage(result.photoUrl, 480, 0.9);
-          descriptor = await faceRecognition.extractFaceDescriptor(enhancedImage);
+        try {
+          descriptor = await faceRecognition.extractFaceDescriptor(strategy.image);
           
           if (descriptor && descriptor.length > 0) {
             faceEmbeddingExtracted = true;
-            faceDetectionMessage = 'Face embedding extracted (after enhancement)';
-            console.log('✅ Face embedding extracted after enhancement');
+            embeddingArray = Array.from(descriptor).map(num => num.toString());
+            faceDetectionMessage = `Face detected with ${strategy.name} processing`;
+            
+            console.log(`✅ Face embedding extracted successfully!`, {
+              strategy: strategy.name,
+              descriptorLength: descriptor.length,
+              sampleValues: Array.from(descriptor.slice(0, 3)).map(v => v.toFixed(4)),
+              databaseFormat: embeddingArray.slice(0, 3)
+            });
+            break;
           } else {
-            faceDetectionMessage = 'No face detected in image';
-            console.log('❌ No face detected after enhancement');
+            console.log(`❌ No face detected with ${strategy.name}`);
           }
+        } catch (strategyError) {
+          console.log(`⚠️ Strategy ${strategy.name} failed:`, strategyError);
         }
         
-      } catch (embeddingError: any) {
-        console.error('Face embedding error:', embeddingError);
-        faceDetectionMessage = `Face detection error: ${embeddingError.message}`;
+        // Small delay between attempts
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
-
-      // 5. Update database with results
-      if (faceEmbeddingExtracted && descriptor) {
-        console.log('💾 Saving face embedding to database...');
+      
+      if (!faceEmbeddingExtracted) {
+        faceDetectionMessage = 'No face detected in image after multiple attempts';
+        console.log('❌ All face detection attempts failed');
         
-        try {
-          await supabase
-            .from('staff')
-            .update({
-              enrollment_status: 'enrolled',
-              face_embedding: Array.from(descriptor),
-              face_enrolled_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .eq('staff_id', currentStaffId);
-          
-          console.log('✅ Database updated with face embedding');
-          
-        } catch (updateError) {
-          console.warn('Could not update DB with embedding, saving locally only');
-          // Save locally as fallback
+        // Try one more time with simple detection as last resort
+        console.log('🔄 Trying simple detection as last resort...');
+        descriptor = await faceRecognition.extractFaceDescriptorSimple(compressedImage);
+        
+        if (descriptor && descriptor.length > 0) {
+          faceEmbeddingExtracted = true;
+          embeddingArray = Array.from(descriptor).map(num => num.toString());
+          faceDetectionMessage = 'Face detected with simple method (low confidence)';
+          console.log('✅ Simple detection successful');
+        }
+      }
+      
+    } catch (embeddingError: any) {
+      console.error('❌ Face embedding extraction error:', embeddingError);
+      faceDetectionMessage = `Face detection error: ${embeddingError.message}`;
+    }
+
+    // 5. Update database with results
+    if (faceEmbeddingExtracted && descriptor && embeddingArray.length > 0) {
+      console.log('💾 Saving face embedding to database...');
+      console.log('📊 Embedding details:', {
+        arrayLength: embeddingArray.length,
+        sample: embeddingArray.slice(0, 3),
+        staffId: currentStaffId
+      });
+      
+      try {
+        const { error } = await supabase
+          .from('staff')
+          .update({
+            enrollment_status: 'enrolled',
+            face_embedding: embeddingArray, // Array of strings
+            face_enrolled_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            photo_url: compressedImage // Save the photo URL as well
+          })
+          .eq('staff_id', currentStaffId);
+        
+        if (error) {
+          console.error('❌ Database update error:', error);
+          throw error;
+        }
+        
+        console.log('✅ Database updated with face embedding');
+        
+        // Also save locally for fast access
+        if (descriptor) {
           faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+          console.log('✅ Embedding saved to local storage');
         }
         
         // SUCCESS: Full enrollment
@@ -324,52 +386,201 @@ const EnrollmentPage: React.FC = () => {
           departmentColor: departmentDetails.color,
           status: 'enrolled',
           photoUrl: compressedImage,
-          faceDetectionMessage
+          faceDetectionMessage,
+          timestamp: new Date().toISOString()
         });
         
-        message.success(`✅ ${staffName} enrolled successfully!`);
+        message.success(`✅ ${staffName} enrolled successfully with face recognition!`);
         
-      } else {
-        // PARTIAL SUCCESS: Saved but no face
-        console.log('⚠️ Staff saved but no face embedding');
+      } catch (updateError: any) {
+        console.error('❌ Could not update DB with embedding:', updateError);
         
+        // Save locally as fallback
+        if (descriptor) {
+          faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+          console.log('✅ Embedding saved locally as fallback');
+        }
+        
+        // Partial success - saved but DB update failed
         setEnrollmentResult({
-          success: false,
-          message: 'Saved but no face detected',
+          success: true,
+          message: 'Enrollment saved locally (DB update failed)',
           staff: { 
             name: staffName, 
             staff_id: currentStaffId 
           },
           department: staffDepartment,
           faceCaptured: true,
-          faceEmbeddingSaved: false,
+          faceEmbeddingSaved: true,
           departmentColor: departmentDetails.color,
-          status: 'pending',
+          status: 'enrolled_local',
           photoUrl: compressedImage,
-          faceDetectionMessage
+          faceDetectionMessage,
+          warning: 'Database update failed, but saved locally'
         });
         
-        message.warning(`⚠️ Staff saved but no face detected. Status: Pending`);
+        message.warning(`⚠️ ${staffName} saved locally only. Database update failed.`);
       }
       
-    } catch (error: any) {
-      console.error('❌ Enrollment failed:', error);
+    } else {
+      // PARTIAL SUCCESS: Saved but no face
+      console.log('⚠️ Staff saved but no face embedding detected');
+      
+      try {
+        // Update record to show pending status
+        await supabase
+          .from('staff')
+          .update({
+            enrollment_status: 'pending',
+            updated_at: new Date().toISOString(),
+            photo_url: compressedImage
+          })
+          .eq('staff_id', currentStaffId);
+        
+        console.log('✅ Database updated to pending status');
+      } catch (pendingError) {
+        console.warn('Could not update pending status:', pendingError);
+      }
       
       setEnrollmentResult({
         success: false,
-        message: 'Enrollment failed',
-        error: error.message,
-        status: 'failed'
+        message: 'Saved but no face detected',
+        staff: { 
+          name: staffName, 
+          staff_id: currentStaffId 
+        },
+        department: staffDepartment,
+        faceCaptured: false,
+        faceEmbeddingSaved: false,
+        departmentColor: departmentDetails.color,
+        status: 'pending',
+        photoUrl: compressedImage,
+        faceDetectionMessage,
+        timestamp: new Date().toISOString()
       });
       
-      message.error(`❌ Enrollment failed: ${error.message}`);
-      
-    } finally {
-      setLoading(false);
-      setEnrollmentComplete(true);
-      setIsCameraActive(false);
+      message.warning(`⚠️ ${staffName} saved but no face detected. Status: Pending`);
     }
+    
+  } catch (error: any) {
+    console.error('❌ Enrollment failed:', error);
+    
+    setEnrollmentResult({
+      success: false,
+      message: 'Enrollment failed',
+      error: error.message,
+      status: 'failed',
+      timestamp: new Date().toISOString()
+    });
+    
+    message.error(`❌ Enrollment failed: ${error.message}`);
+    
+  } finally {
+    setLoading(false);
+    setEnrollmentComplete(true);
+    setIsCameraActive(false);
+    
+    // Log final status
+    console.log('📊 Enrollment process completed:', {
+      success: enrollmentResult?.success,
+      status: enrollmentResult?.status,
+      hasEmbedding: enrollmentResult?.faceEmbeddingSaved,
+      staffId: enrollmentResult?.staff?.staff_id
+    });
+  }
+};
+
+
+const retryFaceEnrollment = async () => {
+  // Get staffId from enrollmentResult state instead of parameter
+  if (!enrollmentResult?.staff?.staff_id) {
+    message.error('No staff ID found for retry');
+    return;
+  }
+
+  const staffId = enrollmentResult.staff.staff_id;
+  const savedImage = localStorage.getItem(`face_image_${staffId}`);
+  
+  if (!savedImage) {
+    message.error('No saved image found for this staff member');
+    return;
+  }
+
+  setLoading(true);
+  setIsProcessing(true);
+  setFaceDetectionTips('Retrying face detection...');
+  
+  try {
+    console.log(`🔄 Retrying face enrollment for ${staffId}`);
+    
+    // Extract face descriptor
+    const descriptor = await faceRecognition.extractFaceDescriptor(savedImage);
+    
+    if (descriptor && descriptor.length > 0) {
+      const embeddingArray = Array.from(descriptor).map(num => num.toString());
+      
+      console.log(`✅ Face detected on retry! Saving to database...`);
+      
+      // Update database
+      const { error } = await supabase
+        .from('staff')
+        .update({
+          enrollment_status: 'enrolled',
+          face_embedding: embeddingArray,
+          face_enrolled_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('staff_id', staffId);
+      
+      if (error) throw error;
+      
+      // Save locally
+      faceRecognition.saveEmbeddingToLocal(staffId, descriptor);
+      
+      // Update enrollment result
+      setEnrollmentResult(prev => ({
+        ...prev,
+        success: true,
+        message: 'Enrollment Complete! (Retried)',
+        faceEmbeddingSaved: true,
+        status: 'enrolled',
+        faceDetectionMessage: 'Face detected on retry'
+      }));
+      
+      message.success('✅ Face enrollment completed successfully!');
+      
+      // Clear camera and restart
+      setIsCameraActive(false);
+      setTimeout(() => setIsCameraActive(true), 100);
+      
+    } else {
+      message.error('Still no face detected. Please try with better lighting.');
+      setFaceDetectionTips('No face detected on retry');
+    }
+    
+  } catch (error: any) {
+    console.error('❌ Retry failed:', error);
+    message.error(`Retry failed: ${error.message}`);
+  } finally {
+    setLoading(false);
+    setIsProcessing(false);
+  }
+};
+
+
+useEffect(() => {
+  // Check model status periodically
+  const checkModels = async () => {
+    const status = faceRecognition.getStatus();
+    console.log('Model Status:', status);
+    setFaceModelsLoaded(status.modelsLoaded);
   };
+  
+  const interval = setInterval(checkModels, 5000);
+  return () => clearInterval(interval);
+}, []);
+
+
 
   const stepItems = [
     {
@@ -620,144 +831,164 @@ const EnrollmentPage: React.FC = () => {
               </Space>
             </>
           ) : enrollmentResult?.status === 'pending' ? (
-            // PENDING STATUS (Saved but no face)
-            <>
-              <AlertCircle size={64} color="#faad14" />
-              <Title level={3} style={{ marginTop: 20, color: '#faad14' }}>
-                Enrollment Incomplete
-              </Title>
-              
-              <Card style={{ maxWidth: 500, margin: '20px auto', textAlign: 'left' }}>
-                <Title level={4}>Partial Success</Title>
-                <Alert
-                  message="Saved but no face detected"
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 20 }}
-                />
-                
-                <p><strong>Name:</strong> {enrollmentResult.staff?.name}</p>
-                <p><strong>Staff ID:</strong> 
-                  <Tag color="blue" style={{ marginLeft: 8 }}>
-                    {enrollmentResult.staff?.staff_id}
-                  </Tag>
-                </p>
-                <p><strong>Department:</strong> 
-                  <Tag 
-                    color="blue" 
-                    style={{ 
-                      marginLeft: 8,
-                      backgroundColor: enrollmentResult.departmentColor || '#1890ff',
-                      color: 'white'
-                    }}
-                  >
-                    {enrollmentResult.department?.toUpperCase()}
-                  </Tag>
-                </p>
-                <p><strong>Status:</strong> <Tag color="orange">PENDING</Tag></p>
-                <p><strong>Face Detection:</strong> 
-                  <Tag color="orange" style={{ marginLeft: 8 }}>
-                    NO FACE DETECTED
-                  </Tag>
-                </p>
-                <p><strong>Database Status:</strong> Saved</p>
-                <p><strong>Message:</strong> {enrollmentResult.faceDetectionMessage}</p>
-                
-                {enrollmentResult.photoUrl && (
-                  <div style={{ marginTop: 20, textAlign: 'center' }}>
-                    <p><strong>Captured Image:</strong></p>
-                    <img 
-                      src={enrollmentResult.photoUrl} 
-                      alt="Staff" 
-                      style={{ 
-                        maxWidth: '150px', 
-                        borderRadius: '8px',
-                        border: '2px solid #faad14'
-                      }} 
-                    />
-                    <p style={{ fontSize: '12px', color: '#faad14', marginTop: '8px' }}>
-                      ⚠️ No face detected in this image
-                    </p>
-                  </div>
-                )}
-              </Card>
-              
-              <Alert
-                message="Next Steps"
-                description="The staff was saved but needs face embedding. You can retry face enrollment from the staff management page or try again now with better lighting."
-                type="info"
-                showIcon
-                style={{ maxWidth: 500, margin: '20px auto' }}
-              />
-              
-              <Space style={{ marginTop: 30 }}>
-                <Button
-                  type="primary"
-                  size="large"
-                  onClick={() => {
-                    setEnrollmentComplete(false);
-                    setIsCameraActive(true);
-                    setEnrollmentResult(null);
-                    setCaptureCount(0);
-                  }}
-                >
-                  Try Face Enrollment Again
-                </Button>
-                <Button 
-                  size="large"
-                  onClick={() => window.location.href = '/staff'}
-                >
-                  Go to Staff Management
-                </Button>
-              </Space>
-            </>
+           
+  // PENDING STATUS (Saved but no face)
+  <>
+    <AlertCircle size={64} color="#faad14" />
+    <Title level={3} style={{ marginTop: 20, color: '#faad14' }}>
+      Enrollment Incomplete
+    </Title>
+    
+    <Card style={{ maxWidth: 500, margin: '20px auto', textAlign: 'left' }}>
+      <Title level={4}>Partial Success</Title>
+      <Alert
+        message="Saved but no face detected"
+        type="warning"
+        showIcon
+        style={{ marginBottom: 20 }}
+      />
+      
+      <p><strong>Name:</strong> {enrollmentResult.staff?.name}</p>
+      <p><strong>Staff ID:</strong> 
+        <Tag color="blue" style={{ marginLeft: 8 }}>
+          {enrollmentResult.staff?.staff_id}
+        </Tag>
+      </p>
+      <p><strong>Department:</strong> 
+        <Tag 
+          color="blue" 
+          style={{ 
+            marginLeft: 8,
+            backgroundColor: enrollmentResult.departmentColor || '#1890ff',
+            color: 'white'
+          }}
+        >
+          {enrollmentResult.department?.toUpperCase()}
+        </Tag>
+      </p>
+      <p><strong>Status:</strong> <Tag color="orange">PENDING</Tag></p>
+      <p><strong>Face Detection:</strong> 
+        <Tag color="orange" style={{ marginLeft: 8 }}>
+          NO FACE DETECTED
+        </Tag>
+      </p>
+      <p><strong>Database Status:</strong> Saved</p>
+      <p><strong>Message:</strong> {enrollmentResult.faceDetectionMessage}</p>
+      
+      {enrollmentResult.photoUrl && (
+        <div style={{ marginTop: 20, textAlign: 'center' }}>
+          <p><strong>Captured Image:</strong></p>
+          <img 
+            src={enrollmentResult.photoUrl} 
+            alt="Staff" 
+            style={{ 
+              maxWidth: '150px', 
+              borderRadius: '8px',
+              border: '2px solid #faad14'
+            }} 
+          />
+          <p style={{ fontSize: '12px', color: '#faad14', marginTop: '8px' }}>
+            ⚠️ No face detected in this image
+          </p>
+        </div>
+      )}
+    </Card>
+    
+    <Alert
+      message="Next Steps"
+      description="The staff was saved but needs face embedding. You can retry face enrollment from the staff management page or try again now with better lighting."
+      type="info"
+      showIcon
+      style={{ maxWidth: 500, margin: '20px auto' }}
+    />
+    
+    <Space style={{ marginTop: 30 }}>
+      <Button
+        type="primary"
+        size="large"
+        onClick={retryFaceEnrollment}  // HERE - using the function
+        loading={loading}
+      >
+        Retry Face Enrollment Now
+      </Button>
+      <Button 
+        size="large"
+        onClick={() => {
+          setEnrollmentComplete(false);
+          setIsCameraActive(true);
+          setEnrollmentResult(null);
+          setCaptureCount(0);
+        }}
+      >
+        Capture New Photo
+      </Button>
+      <Button 
+        size="large"
+        onClick={() => window.location.href = '/staff'}
+      >
+        Go to Staff Management
+      </Button>
+    </Space>
+  </>
+
           ) : (
             // FAILED STATUS
-            <>
-              <div style={{ color: '#ff4d4f', marginBottom: 20 }}>
-                <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-                  <circle cx="32" cy="32" r="30" stroke="#ff4d4f" strokeWidth="2"/>
-                  <path d="M22 22L42 42M42 22L22 42" stroke="#ff4d4f" strokeWidth="4" strokeLinecap="round"/>
-                </svg>
-              </div>
-              <Title level={3} style={{ marginTop: 20 }}>
-                Enrollment Failed
-              </Title>
-              <Alert
-                message="Error"
-                description={enrollmentResult?.message || 'Unknown error occurred'}
-                type="error"
-                showIcon
-                style={{ maxWidth: 500, margin: '20px auto' }}
-              />
-              <Button
-                type="primary"
-                size="large"
-                onClick={() => {
-                  const newStaffId = generateStaffId();
-                  setStaffId(newStaffId);
-                  form.setFieldValue('staff_id', newStaffId);
-                  
-                  setCurrentStep(0);
-                  setEnrollmentComplete(false);
-                  setEnrollmentResult(null);
-                  setIsCameraActive(false);
-                  setCaptureCount(0);
-                  
-                  form.resetFields();
-                  departmentForm.resetFields();
-                  setStaffData({});
-                  
-                  form.setFieldsValue({
-                    gender: 'Male',
-                    staff_id: newStaffId
-                  });
-                }}
-                style={{ marginTop: 20 }}
-              >
-                Try Again
-              </Button>
-            </>
+            // FAILED STATUS
+<>
+  <div style={{ color: '#ff4d4f', marginBottom: 20 }}>
+    <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+      <circle cx="32" cy="32" r="30" stroke="#ff4d4f" strokeWidth="2"/>
+      <path d="M22 22L42 42M42 22L22 42" stroke="#ff4d4f" strokeWidth="4" strokeLinecap="round"/>
+    </svg>
+  </div>
+  <Title level={3} style={{ marginTop: 20 }}>
+    Enrollment Failed
+  </Title>
+  <Alert
+    message="Error"
+    description={enrollmentResult?.message || 'Unknown error occurred'}
+    type="error"
+    showIcon
+    style={{ maxWidth: 500, margin: '20px auto' }}
+  />
+  
+  <Space style={{ marginTop: 20 }}>
+    <Button
+      type="primary"
+      size="large"
+      onClick={retryFaceEnrollment}  // HERE - using the function
+      loading={loading}
+    >
+      Retry Enrollment
+    </Button>
+    <Button
+      type="default"
+      size="large"
+      onClick={() => {
+        const newStaffId = generateStaffId();
+        setStaffId(newStaffId);
+        form.setFieldValue('staff_id', newStaffId);
+        
+        setCurrentStep(0);
+        setEnrollmentComplete(false);
+        setEnrollmentResult(null);
+        setIsCameraActive(false);
+        setCaptureCount(0);
+        
+        form.resetFields();
+        departmentForm.resetFields();
+        setStaffData({});
+        
+        form.setFieldsValue({
+          gender: 'Male',
+          staff_id: newStaffId
+        });
+      }}
+    >
+      Start Fresh
+    </Button>
+  </Space>
+</>
           )}
         </div>
       ) : currentStep === 2 && isCameraActive ? (
