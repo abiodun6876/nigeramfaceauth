@@ -1,7 +1,7 @@
-// src/components/FaceEnrollmentCamera.tsx
+// src/components/FaceEnrollmentCamera.tsx - UPDATED TO MATCH PROTOTYPE
 import React, { useState, useRef, useEffect } from 'react';
-import { Typography, Progress, Alert } from 'antd';
-import { VideoOff, Camera, CheckCircle, XCircle } from 'lucide-react';
+import { Typography, Progress } from 'antd';
+import { VideoOff, Camera, CheckCircle, XCircle, PauseCircle, PlayCircle } from 'lucide-react';
 
 const { Text, Title } = Typography;
 
@@ -13,7 +13,7 @@ interface FaceEnrollmentCameraProps {
     department: string;
   };
   onEnrollmentComplete: (result: any) => void;
-  onCapture: (photoUrl: string) => Promise<void>;
+  onCapture?: (photoUrl: string) => Promise<void>;
 }
 
 const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
@@ -26,13 +26,15 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [captureCount, setCaptureCount] = useState(0);
-  const [lastResult, setLastResult] = useState<any>(null);
   const [autoScanActive, setAutoScanActive] = useState(true);
+  const [lastResult, setLastResult] = useState<any>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const resultTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Start camera - Enrollment specific
   const startCamera = async () => {
@@ -68,7 +70,9 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           
           // Start auto-scan after camera is ready
           setTimeout(() => {
-            startAutoScan();
+            if (autoScanActive) {
+              startAutoScan();
+            }
           }, 1000);
         };
         
@@ -90,7 +94,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     }
   };
 
-  // Auto-scan function (similar to reference image)
+  // Auto-scan function
   const startAutoScan = () => {
     if (captureIntervalRef.current) {
       clearInterval(captureIntervalRef.current);
@@ -100,7 +104,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     setAutoScanActive(true);
     
     captureIntervalRef.current = setInterval(() => {
-      if (isCameraActive && !isCapturing) {
+      if (isCameraActive && !isCapturing && !isProcessing) {
         console.log('Auto-scan trigger');
         handleCapture();
       }
@@ -144,14 +148,14 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
 
   // Handle capture
   const handleCapture = async () => {
-    if (!isCameraActive || isCapturing) return;
+    if (!isCameraActive || isCapturing || isProcessing) return;
     
     console.log('Enrollment capture initiated');
     setIsCapturing(true);
     setLastResult(null);
     
     try {
-      // Simulate scan count like reference
+      // Increment scan count
       setCaptureCount(prev => prev + 1);
       
       // Capture image
@@ -161,7 +165,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
         throw new Error('Failed to capture image');
       }
       
-      // Show processing
+      // Show processing animation
       setProgress(0);
       const processInterval = setInterval(() => {
         setProgress(prev => {
@@ -173,13 +177,15 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
         });
       }, 100);
       
-      // Process the capture
-      setTimeout(async () => {
+      // Process the capture after a short delay
+      setTimeout(() => {
         try {
           console.log('Processing enrollment capture...');
           
-          // Call the provided onCapture function
-          await onCapture(imageData);
+          // Call the provided onCapture function if it exists
+          if (onCapture) {
+            onCapture(imageData);
+          }
           
           // Create success result
           const result = {
@@ -190,19 +196,19 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
             captureCount: captureCount + 1
           };
           
-          setLastResult(result);
+          // Show success message
+          setLastResult({
+            success: true,
+            message: 'Face Captured Successfully!',
+            temporary: true
+          });
           
-          // Complete enrollment
+          // Auto-complete after 2 seconds
           setTimeout(() => {
             onEnrollmentComplete(result);
             setIsCapturing(false);
             setProgress(0);
-            
-            // Clear success message after 2 seconds
-            setTimeout(() => {
-              setLastResult(null);
-            }, 2000);
-          }, 500);
+          }, 2000);
           
         } catch (error: any) {
           console.error('Processing error:', error);
@@ -216,16 +222,15 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           setLastResult(errorResult);
           setIsCapturing(false);
           setProgress(0);
-          
-          // Clear error after 3 seconds
-          setTimeout(() => {
-            setLastResult(null);
-          }, 3000);
         }
-      }, 1500);
+      }, 1000);
       
     } catch (error: any) {
       console.error('Capture error:', error);
+      setLastResult({
+        success: false,
+        message: 'Capture failed. Please try again.'
+      });
       setIsCapturing(false);
       setProgress(0);
     }
@@ -237,12 +242,26 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     handleCapture();
   };
 
+  // Toggle auto-scan
+  const toggleAutoScan = () => {
+    if (autoScanActive) {
+      stopAutoScan();
+    } else {
+      startAutoScan();
+    }
+  };
+
   // Stop camera
   const stopCamera = () => {
     console.log('Stopping enrollment camera');
     
     // Stop auto-scan
     stopAutoScan();
+    
+    // Clear timeouts
+    if (resultTimeoutRef.current) {
+      clearTimeout(resultTimeoutRef.current);
+    }
     
     // Stop camera stream
     if (streamRef.current) {
@@ -271,46 +290,74 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     };
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
   return (
     <div style={{
       width: '100%',
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      backgroundColor: '#0a1a35',
-      borderRadius: 12,
+      background: '#0a1a35',
+      borderRadius: 8,
       overflow: 'hidden'
     }}>
-      {/* Header - Like reference image */}
+      {/* Top Status Bar - Like prototype */}
       <div style={{
-        padding: '16px 20px',
-        backgroundColor: 'rgba(0, 26, 53, 0.8)',
-        borderBottom: '1px solid rgba(0, 150, 255, 0.3)',
+        padding: '12px 16px',
+        backgroundColor: 'rgba(0, 20, 40, 0.8)',
+        borderBottom: '1px solid rgba(0, 150, 255, 0.2)',
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <div>
-          <Title level={4} style={{ color: '#ffffff', margin: 0 }}>
-            {staff.name}
-          </Title>
-          <Text style={{ color: '#aaccff', fontSize: 12 }}>
-            ID: {staff.staff_id} | {staff.department}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            backgroundColor: '#00ffaa',
+            boxShadow: '0 0 8px #00ffaa'
+          }} />
+          <Text style={{ fontSize: 12, color: '#aaccff', fontWeight: 'bold' }}>
+            READY
           </Text>
         </div>
         
-        <div style={{
-          backgroundColor: autoScanActive 
-            ? 'rgba(0, 255, 150, 0.1)' 
-            : 'rgba(255, 170, 0, 0.1)',
-          color: autoScanActive ? '#00ffaa' : '#ffaa00',
-          padding: '8px 16px',
-          borderRadius: 8,
-          border: `1px solid ${autoScanActive ? '#00ffaa' : '#ffaa00'}`,
-          fontSize: 14,
-          fontWeight: 'bold'
+        <div style={{ 
+          backgroundColor: 'rgba(0, 255, 150, 0.1)',
+          color: '#00ffaa',
+          padding: '4px 12px',
+          borderRadius: 12,
+          border: '1px solid rgba(0, 255, 150, 0.3)',
+          fontSize: 12,
+          fontWeight: 'bold',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
         }}>
           AUTO-SCAN: {captureCount}
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 12, color: '#aaccff' }}>
+            {staff.name || 'STAFF NAME'}
+          </Text>
+          <div style={{
+            backgroundColor: 'rgba(0, 150, 255, 0.2)',
+            color: '#00aaff',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 11,
+            fontWeight: 'bold'
+          }}>
+            {staff.staff_id}
+          </div>
         </div>
       </div>
 
@@ -353,31 +400,32 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
               color: '#fff',
               backgroundColor: '#0a1a35'
             }}>
-              <VideoOff size={64} color="rgba(0, 150, 255, 0.7)" />
+              <VideoOff size={48} color="rgba(0, 150, 255, 0.7)" />
               <Text style={{ 
                 color: 'rgba(0, 150, 255, 0.7)', 
                 marginTop: 16,
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: 'bold'
               }}>
-                {error || 'Starting Enrollment Camera...'}
+                {error || 'Starting Camera...'}
               </Text>
             </div>
           )}
           
-          {/* Face Position Guide - Like reference */}
-          {isCameraActive && (
+          {/* Face Position Guide - Centered like prototype */}
+          {isCameraActive && !isCapturing && (
             <div style={{
               position: 'absolute',
               top: '50%',
               left: '50%',
               transform: 'translate(-50%, -50%)',
-              width: '280px',
-              height: '320px',
+              width: '250px',
+              height: '300px',
               border: '2px solid rgba(0, 255, 150, 0.6)',
               borderRadius: 12,
               pointerEvents: 'none',
-              boxShadow: '0 0 40px rgba(0, 255, 150, 0.3)'
+              boxShadow: '0 0 40px rgba(0, 255, 150, 0.3)',
+              zIndex: 5
             }}>
               <div style={{
                 position: 'absolute',
@@ -391,121 +439,127 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
                 backgroundColor: 'rgba(0, 0, 0, 0.7)',
                 padding: '8px 20px',
                 borderRadius: 20,
-                whiteSpace: 'nowrap'
+                whiteSpace: 'nowrap',
+                backdropFilter: 'blur(10px)'
               }}>
-                Position Face Here
+                POSITION FACE HERE
               </div>
             </div>
           )}
           
-          {/* Status Overlay */}
-          {isCameraActive && (
-            <div style={{
-              position: 'absolute',
-              top: 20,
-              left: 20,
-              right: 20,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              {/* System Status */}
-              <div style={{
-                backgroundColor: 'rgba(0, 26, 53, 0.8)',
-                color: '#00aaff',
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: '1px solid rgba(0, 150, 255, 0.3)',
-                fontSize: 12,
-                fontWeight: 'bold'
-              }}>
-                SYSTEM: {isCapturing ? 'PROCESSING...' : 'READY'}
-              </div>
-              
-              {/* Enrollment Status */}
-              <div style={{
-                backgroundColor: 'rgba(0, 26, 53, 0.8)',
-                color: isCapturing ? '#00aaff' : '#00ffaa',
-                padding: '8px 16px',
-                borderRadius: 8,
-                border: `1px solid ${isCapturing ? 'rgba(0, 150, 255, 0.3)' : 'rgba(0, 255, 150, 0.3)'}`,
-                fontSize: 12,
-                fontWeight: 'bold'
-              }}>
-                ENROLLMENT
-              </div>
-            </div>
-          )}
-          
-          {/* Processing Bar */}
+          {/* Processing Overlay */}
           {isCapturing && (
             <div style={{
               position: 'absolute',
-              bottom: 40,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '80%',
-              maxWidth: 400
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+              backdropFilter: 'blur(5px)'
             }}>
+              <div style={{
+                width: 80,
+                height: 80,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(0, 255, 150, 0.1)',
+                border: '2px solid #00ffaa',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 20,
+                animation: 'pulse 1.5s infinite'
+              }}>
+                <div style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  backgroundColor: '#00ffaa',
+                  boxShadow: '0 0 20px #00ffaa'
+                }} />
+              </div>
+              
               <Progress 
                 percent={progress} 
                 status="active" 
-                strokeColor={{ from: '#00aaff', to: '#00ffaa' }}
+                strokeColor={{
+                  '0%': '#00aaff',
+                  '100%': '#00ffaa',
+                }}
                 strokeWidth={3}
                 showInfo={false}
+                style={{ width: '80%', maxWidth: 300 }}
               />
+              
               <Text style={{ 
                 color: '#00ffaa', 
-                fontSize: 14, 
-                textAlign: 'center',
-                display: 'block',
-                marginTop: 8,
-                fontWeight: 'bold'
+                fontSize: 16, 
+                fontWeight: 'bold',
+                marginTop: 16,
+                textShadow: '0 0 10px rgba(0, 255, 150, 0.5)'
               }}>
                 PROCESSING...
               </Text>
             </div>
           )}
           
-          {/* Capture Result Messages */}
+          {/* Success/Error Message Overlay */}
           {lastResult && (
             <div style={{
               position: 'absolute',
-              bottom: 100,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '90%',
-              maxWidth: 400,
-              zIndex: 1000
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 20,
+              pointerEvents: 'none'
             }}>
               <div style={{
                 backgroundColor: lastResult.success 
                   ? 'rgba(0, 255, 150, 0.15)' 
                   : 'rgba(255, 50, 50, 0.15)',
                 color: lastResult.success ? '#00ffaa' : '#ff3333',
-                padding: '16px 24px',
-                borderRadius: 12,
+                padding: '24px 32px',
+                borderRadius: 16,
                 border: lastResult.success 
-                  ? '1px solid rgba(0, 255, 150, 0.5)' 
-                  : '1px solid rgba(255, 50, 50, 0.5)',
+                  ? '2px solid rgba(0, 255, 150, 0.5)' 
+                  : '2px solid rgba(255, 50, 50, 0.5)',
                 textAlign: 'center',
-                backdropFilter: 'blur(10px)',
-                boxShadow: '0 0 30px rgba(0, 0, 0, 0.4)'
+                backdropFilter: 'blur(20px)',
+                boxShadow: '0 0 40px rgba(0, 0, 0, 0.5)',
+                maxWidth: '80%'
               }}>
                 {lastResult.success ? (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                    <CheckCircle size={24} />
-                    <Text style={{ fontSize: 16, fontWeight: 'bold' }}>
-                      Face Captured Successfully!
-                    </Text>
-                  </div>
+                  <>
+                    <CheckCircle size={48} style={{ marginBottom: 16 }} />
+                    <Title level={4} style={{ 
+                      color: '#00ffaa', 
+                      margin: 0,
+                      fontSize: 20,
+                      textShadow: '0 0 10px rgba(0, 255, 150, 0.5)'
+                    }}>
+                      Face Captured<br />Successfully!
+                    </Title>
+                  </>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                    <XCircle size={24} />
-                    <Text style={{ fontSize: 16, fontWeight: 'bold' }}>
+                  <>
+                    <XCircle size={48} style={{ marginBottom: 16 }} />
+                    <Title level={4} style={{ 
+                      color: '#ff3333', 
+                      margin: 0,
+                      fontSize: 20
+                    }}>
                       {lastResult.message}
-                    </Text>
-                  </div>
+                    </Title>
+                  </>
                 )}
               </div>
             </div>
@@ -513,25 +567,17 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
         </div>
       </div>
 
-      {/* Footer with Instructions */}
+      {/* Control Panel - Like prototype */}
       <div style={{
         padding: '16px',
-        backgroundColor: 'rgba(0, 26, 53, 0.8)',
-        borderTop: '1px solid rgba(0, 150, 255, 0.3)'
+        backgroundColor: 'rgba(0, 20, 40, 0.8)',
+        borderTop: '1px solid rgba(0, 150, 255, 0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16
       }}>
-        <Alert
-          message="Enrollment Instructions"
-          description="Position face in the frame. The camera will automatically capture and process facial data every 3 seconds."
-          type="info"
-          showIcon
-          style={{ 
-            backgroundColor: 'transparent',
-            border: '1px solid rgba(0, 150, 255, 0.3)'
-          }}
-        />
-        
-        <div style={{ 
-          marginTop: 16,
+        {/* Action Buttons */}
+        <div style={{
           display: 'flex',
           justifyContent: 'center',
           gap: 16
@@ -545,46 +591,125 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
                 : 'rgba(0, 150, 255, 0.8)',
               color: '#ffffff',
               border: 'none',
-              padding: '12px 24px',
+              padding: '14px 32px',
               borderRadius: 8,
               fontSize: 14,
               fontWeight: 'bold',
               cursor: isCapturing || !isCameraActive ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              transition: 'all 0.3s'
+              gap: 10,
+              transition: 'all 0.3s',
+              minWidth: 180,
+              justifyContent: 'center',
+              boxShadow: '0 0 15px rgba(0, 150, 255, 0.3)'
             }}
           >
-            <Camera size={18} />
+            <Camera size={20} />
             {isCapturing ? 'CAPTURING...' : 'CAPTURE NOW'}
           </button>
           
           <button
-            onClick={autoScanActive ? stopAutoScan : startAutoScan}
+            onClick={toggleAutoScan}
+            disabled={isCapturing}
             style={{
               backgroundColor: autoScanActive 
                 ? 'rgba(255, 170, 0, 0.2)' 
                 : 'rgba(0, 255, 150, 0.2)',
               color: autoScanActive ? '#ffaa00' : '#00ffaa',
-              border: `1px solid ${autoScanActive ? '#ffaa00' : '#00ffaa'}`,
-              padding: '12px 24px',
+              border: `2px solid ${autoScanActive ? '#ffaa00' : '#00ffaa'}`,
+              padding: '14px 32px',
               borderRadius: 8,
               fontSize: 14,
               fontWeight: 'bold',
-              cursor: 'pointer',
+              cursor: isCapturing ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              transition: 'all 0.3s'
+              gap: 10,
+              transition: 'all 0.3s',
+              minWidth: 180,
+              justifyContent: 'center',
+              boxShadow: autoScanActive 
+                ? '0 0 15px rgba(255, 170, 0, 0.3)' 
+                : '0 0 15px rgba(0, 255, 150, 0.3)'
             }}
           >
-            {autoScanActive ? 'PAUSE AUTO-SCAN' : 'RESUME AUTO-SCAN'}
+            {autoScanActive ? (
+              <>
+                <PauseCircle size={20} />
+                PAUSE AUTO-SCAN
+              </>
+            ) : (
+              <>
+                <PlayCircle size={20} />
+                RESUME AUTO-SCAN
+              </>
+            )}
           </button>
+        </div>
+
+        {/* Status Info */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          gap: 24
+        }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ 
+              fontSize: 11, 
+              color: '#aaccff',
+              marginBottom: 2
+            }}>
+              AUTO-SCAN: {captureCount}
+            </div>
+            <div style={{ 
+              width: 4,
+              height: 4,
+              borderRadius: '50%',
+              backgroundColor: autoScanActive ? '#00ffaa' : '#ffaa00',
+              margin: '0 auto',
+              boxShadow: `0 0 8px ${autoScanActive ? '#00ffaa' : '#ffaa00'}`
+            }} />
+          </div>
+          
+          <div style={{ 
+            fontSize: 11, 
+            color: '#aaccff',
+            fontStyle: 'italic',
+            textAlign: 'center',
+            maxWidth: 300
+          }}>
+            Position face in the frame for automatic capture
+          </div>
         </div>
       </div>
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      {/* CSS Animations */}
+      <style>
+        {`
+          @keyframes pulse {
+            0% { 
+              transform: scale(0.95);
+              box-shadow: 0 0 0 0 rgba(0, 255, 150, 0.7);
+            }
+            70% { 
+              transform: scale(1);
+              box-shadow: 0 0 0 20px rgba(0, 255, 150, 0);
+            }
+            100% { 
+              transform: scale(0.95);
+              box-shadow: 0 0 0 0 rgba(0, 255, 150, 0);
+            }
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+        `}
+      </style>
     </div>
   );
 };
