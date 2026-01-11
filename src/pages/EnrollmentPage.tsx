@@ -194,261 +194,261 @@ const EnrollmentPage: React.FC = () => {
   };
 
   const processEnrollmentWithImage = async (imageUrl: string) => {
-  try {
-    setLoading(true);
-    console.log('🔄 Starting enrollment process with captured image...');
-
-    let staffDepartment = staffData.department;
-    
-    if (!staffDepartment) {
-      const deptFormValues = departmentForm.getFieldsValue();
-      staffDepartment = deptFormValues.department || 'studio';
-      console.log('⚠️ Department was undefined, using:', staffDepartment);
-    }
-
-    const currentStaffId = staffData.staff_id || staffId;
-    const staffName = staffData.name || 'Unknown Staff';
-    
-    console.log('Staff Data:', { 
-      id: currentStaffId, 
-      name: staffName, 
-      department: staffDepartment 
-    });
-
-    // 1. Prepare database record
-    const currentDate = new Date();
-    const departmentDetails = departments.find(dept => dept.value === staffDepartment) || departments[0];
-    
-    const staffRecord = {
-      staff_id: currentStaffId,
-      name: staffName,
-      email: null,
-      phone: null,
-      gender: staffData.gender || 'Male',
-      date_of_birth: null,
-      department: departmentDetails.dbDepartment,
-      department_name: departmentDetails.dbDepartmentName,
-      employment_date: currentDate.toISOString().split('T')[0],
-      employment_status: 'active',
-      enrollment_status: 'pending',
-      is_active: true,
-      position: null,
-      face_embedding: null,
-      photo_url: null,
-      face_enrolled_at: null,
-      face_match_threshold: 0.75,
-      last_face_scan: null,
-      shift_schedule: null,
-      salary_grade: null,
-      supervisor_id: null,
-      emergency_contact: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    console.log('📦 Record ready for DB:', staffRecord);
-
-    // 2. Save image locally and prepare compressed version
-    const compressedImage = await compressImage(imageUrl, 640, 0.8);
-    localStorage.setItem(`face_image_${currentStaffId}`, compressedImage);
-    console.log('✅ Image saved locally');
-
-    // 3. Save to Supabase with photo URL
-    console.log('💾 Saving staff record to database...');
-    const updatedRecord = {
-      ...staffRecord,
-      photo_url: compressedImage,
-      updated_at: new Date().toISOString()
-    };
-    
-    const { data, error } = await supabase
-      .from('staff')
-      .upsert([updatedRecord], { onConflict: 'staff_id' })
-      .select();
-    
-    if (error) {
-      console.error('❌ DB Save Error:', error);
-      throw new Error(`Database save failed: ${error.message}`);
-    }
-    
-    console.log('✅ Staff saved to Supabase with photo:', data);
-
-    // 4. Extract face embedding
-    let faceEmbeddingExtracted = false;
-    let descriptor: Float32Array | null = null;
-    let faceDetectionMessage = '';
-    let embeddingArray: string[] = [];
-    
-    console.log('🔍 Starting face embedding extraction...');
-    
     try {
-      descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
+      setLoading(true);
+      console.log('🔄 Starting enrollment process with captured image...');
+
+      let staffDepartment = staffData.department;
       
-      if (descriptor && descriptor.length > 0) {
-        faceEmbeddingExtracted = true;
-        embeddingArray = Array.from(descriptor).map(num => num.toString());
-        faceDetectionMessage = 'Face detected successfully';
-        
-        console.log(`✅ Face embedding extracted!`, {
-          descriptorLength: descriptor.length,
-          sampleValues: Array.from(descriptor.slice(0, 3)).map(v => v.toFixed(4))
-        });
-      } else {
-        console.log('❌ No face detected');
-        faceDetectionMessage = 'No face detected in image';
+      if (!staffDepartment) {
+        const deptFormValues = departmentForm.getFieldsValue();
+        staffDepartment = deptFormValues.department || 'studio';
+        console.log('⚠️ Department was undefined, using:', staffDepartment);
+      }
+
+      const currentStaffId = staffData.staff_id || staffId;
+      const staffName = staffData.name || 'Unknown Staff';
+      
+      console.log('Staff Data:', { 
+        id: currentStaffId, 
+        name: staffName, 
+        department: staffDepartment 
+      });
+
+      // 1. Prepare database record
+      const currentDate = new Date();
+      const departmentDetails = departments.find(dept => dept.value === staffDepartment) || departments[0];
+      
+      const staffRecord = {
+        staff_id: currentStaffId,
+        name: staffName,
+        email: null,
+        phone: null,
+        gender: staffData.gender || 'Male',
+        date_of_birth: null,
+        department: departmentDetails.dbDepartment,
+        department_name: departmentDetails.dbDepartmentName,
+        employment_date: currentDate.toISOString().split('T')[0],
+        employment_status: 'active',
+        enrollment_status: 'pending',
+        is_active: true,
+        position: null,
+        face_embedding: null,
+        photo_url: null,
+        face_enrolled_at: null,
+        face_match_threshold: 0.75,
+        last_face_scan: null,
+        shift_schedule: null,
+        salary_grade: null,
+        supervisor_id: null,
+        emergency_contact: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log('📦 Record ready for DB:', staffRecord);
+
+      // 2. Save image locally and prepare compressed version
+      const compressedImage = await compressImage(imageUrl, 640, 0.8);
+      localStorage.setItem(`face_image_${currentStaffId}`, compressedImage);
+      console.log('✅ Image saved locally');
+
+      // 3. Save to Supabase with photo URL
+      console.log('💾 Saving staff record to database...');
+      const updatedRecord = {
+        ...staffRecord,
+        photo_url: compressedImage,
+        updated_at: new Date().toISOString()
+      };
+      
+      const { data, error } = await supabase
+        .from('staff')
+        .upsert([updatedRecord], { onConflict: 'staff_id' })
+        .select();
+      
+      if (error) {
+        console.error('❌ DB Save Error:', error);
+        throw new Error(`Database save failed: ${error.message}`);
       }
       
-    } catch (embeddingError: any) {
-      console.error('❌ Face embedding extraction error:', embeddingError);
-      faceDetectionMessage = `Face detection error: ${embeddingError.message}`;
-    }
+      console.log('✅ Staff saved to Supabase with photo:', data);
 
-    // 5. Update database with face embedding if detected
-    let enrollmentSuccess = false;
-    let enrollmentStatus = 'pending';
-    let resultData = null;
-    
-    if (faceEmbeddingExtracted && descriptor && embeddingArray.length > 0) {
-      console.log('💾 Saving face embedding to database...');
+      // 4. Extract face embedding
+      let faceEmbeddingExtracted = false;
+      let descriptor: Float32Array | null = null;
+      let faceDetectionMessage = '';
+      let embeddingArray: string[] = [];
+      
+      console.log('🔍 Starting face embedding extraction...');
       
       try {
-        const { error: updateError } = await supabase
-          .from('staff')
-          .update({
-            enrollment_status: 'enrolled',
-            face_embedding: embeddingArray,
-            face_enrolled_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('staff_id', currentStaffId);
+        descriptor = await faceRecognition.extractFaceDescriptor(compressedImage);
         
-        if (updateError) throw updateError;
+        if (descriptor && descriptor.length > 0) {
+          faceEmbeddingExtracted = true;
+          embeddingArray = Array.from(descriptor).map(num => num.toString());
+          faceDetectionMessage = 'Face detected successfully';
+          
+          console.log(`✅ Face embedding extracted!`, {
+            descriptorLength: descriptor.length,
+            sampleValues: Array.from(descriptor.slice(0, 3)).map(v => v.toFixed(4))
+          });
+        } else {
+          console.log('❌ No face detected');
+          faceDetectionMessage = 'No face detected in image';
+        }
         
-        console.log('✅ Database updated with face embedding');
+      } catch (embeddingError: any) {
+        console.error('❌ Face embedding extraction error:', embeddingError);
+        faceDetectionMessage = `Face detection error: ${embeddingError.message}`;
+      }
+
+      // 5. Update database with face embedding if detected
+      let enrollmentSuccess = false;
+      let enrollmentStatus = 'pending';
+      let resultData = null;
+      
+      if (faceEmbeddingExtracted && descriptor && embeddingArray.length > 0) {
+        console.log('💾 Saving face embedding to database...');
         
-        // Save locally
-        faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+        try {
+          const { error: updateError } = await supabase
+            .from('staff')
+            .update({
+              enrollment_status: 'enrolled',
+              face_embedding: embeddingArray,
+              face_enrolled_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('staff_id', currentStaffId);
+          
+          if (updateError) throw updateError;
+          
+          console.log('✅ Database updated with face embedding');
+          
+          // Save locally
+          faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+          
+          // SUCCESS
+          enrollmentSuccess = true;
+          enrollmentStatus = 'enrolled';
+          
+          resultData = {
+            success: true,
+            message: 'Enrollment Complete!',
+            staff: { 
+              name: staffName, 
+              staff_id: currentStaffId 
+            },
+            department: staffDepartment,
+            faceCaptured: true,
+            faceEmbeddingSaved: true,
+            departmentColor: departmentDetails.color,
+            status: 'enrolled',
+            photoUrl: compressedImage,
+            faceDetectionMessage,
+            timestamp: new Date().toISOString()
+          };
+          
+          message.success(`✅ ${staffName} enrolled successfully!`);
+          
+        } catch (updateError: any) {
+          console.error('❌ Could not update DB with embedding:', updateError);
+          
+          // Save locally as fallback
+          if (descriptor) {
+            faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
+          }
+          
+          enrollmentSuccess = true;
+          enrollmentStatus = 'enrolled_local';
+          
+          resultData = {
+            success: true,
+            message: 'Enrollment saved locally (DB update failed)',
+            staff: { 
+              name: staffName, 
+              staff_id: currentStaffId 
+            },
+            department: staffDepartment,
+            faceCaptured: true,
+            faceEmbeddingSaved: true,
+            departmentColor: departmentDetails.color,
+            status: 'enrolled_local',
+            photoUrl: compressedImage,
+            faceDetectionMessage,
+            warning: 'Database update failed, but saved locally'
+          };
+          
+          message.warning(`⚠️ ${staffName} saved locally only. Database update failed.`);
+        }
         
-        // SUCCESS
-        enrollmentSuccess = true;
-        enrollmentStatus = 'enrolled';
+      } else {
+        // PARTIAL SUCCESS: Saved but no face
+        console.log('⚠️ Staff saved but no face embedding detected');
+        enrollmentSuccess = false;
+        enrollmentStatus = 'pending';
         
         resultData = {
-          success: true,
-          message: 'Enrollment Complete!',
+          success: false,
+          message: 'Saved but no face detected',
           staff: { 
             name: staffName, 
             staff_id: currentStaffId 
           },
           department: staffDepartment,
-          faceCaptured: true,
-          faceEmbeddingSaved: true,
+          faceCaptured: false,
+          faceEmbeddingSaved: false,
           departmentColor: departmentDetails.color,
-          status: 'enrolled',
+          status: 'pending',
           photoUrl: compressedImage,
           faceDetectionMessage,
           timestamp: new Date().toISOString()
         };
         
-        message.success(`✅ ${staffName} enrolled successfully!`);
-        
-      } catch (updateError: any) {
-        console.error('❌ Could not update DB with embedding:', updateError);
-        
-        // Save locally as fallback
-        if (descriptor) {
-          faceRecognition.saveEmbeddingToLocal(currentStaffId, descriptor);
-        }
-        
-        enrollmentSuccess = true;
-        enrollmentStatus = 'enrolled_local';
-        
-        resultData = {
-          success: true,
-          message: 'Enrollment saved locally (DB update failed)',
-          staff: { 
-            name: staffName, 
-            staff_id: currentStaffId 
-          },
-          department: staffDepartment,
-          faceCaptured: true,
-          faceEmbeddingSaved: true,
-          departmentColor: departmentDetails.color,
-          status: 'enrolled_local',
-          photoUrl: compressedImage,
-          faceDetectionMessage,
-          warning: 'Database update failed, but saved locally'
-        };
-        
-        message.warning(`⚠️ ${staffName} saved locally only. Database update failed.`);
+        message.warning(`⚠️ ${staffName} saved but no face detected. Status: Pending`);
       }
       
-    } else {
-      // PARTIAL SUCCESS: Saved but no face
-      console.log('⚠️ Staff saved but no face embedding detected');
-      enrollmentSuccess = false;
-      enrollmentStatus = 'pending';
+      // Log the enrollment result immediately
+      console.log('📊 Enrollment process completed:', {
+        success: enrollmentSuccess,
+        status: enrollmentStatus,
+        hasEmbedding: faceEmbeddingExtracted
+      });
+
+      // Set the result and complete states together
+      setEnrollmentResult(resultData);
+      setEnrollmentComplete(true);
+      setLoading(false);
+      setIsCameraActive(false);
+      setCapturedImage(null);
       
-      resultData = {
+    } catch (error: any) {
+      console.error('❌ Enrollment failed:', error);
+      
+      const errorResult = {
         success: false,
-        message: 'Saved but no face detected',
-        staff: { 
-          name: staffName, 
-          staff_id: currentStaffId 
-        },
-        department: staffDepartment,
-        faceCaptured: false,
-        faceEmbeddingSaved: false,
-        departmentColor: departmentDetails.color,
-        status: 'pending',
-        photoUrl: compressedImage,
-        faceDetectionMessage,
+        message: 'Enrollment failed',
+        error: error.message,
+        status: 'failed',
         timestamp: new Date().toISOString()
       };
       
-      message.warning(`⚠️ ${staffName} saved but no face detected. Status: Pending`);
+      setEnrollmentResult(errorResult);
+      setEnrollmentComplete(true);
+      setLoading(false);
+      setIsCameraActive(false);
+      setCapturedImage(null);
+      
+      message.error(`❌ Enrollment failed: ${error.message}`);
+      
+      console.log('📊 Enrollment process failed:', {
+        success: false,
+        status: 'failed',
+        error: error.message
+      });
     }
-    
-    // Log the enrollment result immediately
-    console.log('📊 Enrollment process completed:', {
-      success: enrollmentSuccess,
-      status: enrollmentStatus,
-      hasEmbedding: faceEmbeddingExtracted
-    });
-
-    // Set the result and complete states together
-    setEnrollmentResult(resultData);
-    setEnrollmentComplete(true);
-    setLoading(false);
-    setIsCameraActive(false);
-    setCapturedImage(null);
-    
-  } catch (error: any) {
-    console.error('❌ Enrollment failed:', error);
-    
-    const errorResult = {
-      success: false,
-      message: 'Enrollment failed',
-      error: error.message,
-      status: 'failed',
-      timestamp: new Date().toISOString()
-    };
-    
-    setEnrollmentResult(errorResult);
-    setEnrollmentComplete(true);
-    setLoading(false);
-    setIsCameraActive(false);
-    setCapturedImage(null);
-    
-    message.error(`❌ Enrollment failed: ${error.message}`);
-    
-    console.log('📊 Enrollment process failed:', {
-      success: false,
-      status: 'failed',
-      error: error.message
-    });
-  }
-};
+  };
 
   const retryFaceEnrollment = async () => {
     if (!enrollmentResult?.staff?.staff_id) {
@@ -580,165 +580,21 @@ const EnrollmentPage: React.FC = () => {
   }, [currentStep, isCameraActive]);
 
   useEffect(() => {
-  console.log('DEBUG STATE UPDATE:', {
-    loading,
-    enrollmentComplete,
-    enrollmentResult: enrollmentResult?.status,
-    currentStep,
-    isCameraActive,
-    capturedImage: !!capturedImage,
-    showCapturedPreview
-  });
-}, [loading, enrollmentComplete, enrollmentResult, currentStep, isCameraActive, capturedImage, showCapturedPreview]);
+    console.log('DEBUG STATE UPDATE:', {
+      loading,
+      enrollmentComplete,
+      enrollmentResult: enrollmentResult?.status,
+      currentStep,
+      isCameraActive,
+      capturedImage: !!capturedImage,
+      showCapturedPreview
+    });
+  }, [loading, enrollmentComplete, enrollmentResult, currentStep, isCameraActive, capturedImage, showCapturedPreview]);
 
-  const stepItems = [
-    {
-      title: 'Basic Information',
-      icon: <User />,
-      content: (
-        <div>
-          <Alert
-            message="Staff Information"
-            description="Fill in the staff's basic details. Staff ID will be auto-generated."
-            type="info"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-          
-          <Form
-            form={form}
-            layout="vertical"
-            style={{ maxWidth: 600, margin: '0 auto' }}
-            initialValues={{ gender: 'Male' }}
-          >
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Form.Item
-                  label="Full Name *"
-                  name="name"
-                  rules={[
-                    { required: true, message: 'Please enter staff name', whitespace: true },
-                    { min: 3, message: 'Name must be at least 3 characters' }
-                  ]}
-                  validateTrigger={['onChange', 'onBlur']}
-                >
-                  <Input placeholder="Enter staff full name" size="large" />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Form.Item label="Staff ID *" name="staff_id">
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <Input
-                      value={staffId}
-                      readOnly
-                      size="large"
-                      style={{ 
-                        flex: 1,
-                        textTransform: 'uppercase',
-                        backgroundColor: '#fafafa',
-                        cursor: 'not-allowed'
-                      }}
-                      prefix={<Users size={16} />}
-                    />
-                    <Button type="default" size="large" onClick={handleRegenerateStaffId}>
-                      Regenerate
-                    </Button>
-                  </div>
-                  <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-                    Staff ID is auto-generated. Click "Regenerate" for a new ID.
-                  </Text>
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Form.Item label="Gender" name="gender">
-                  <Select placeholder="Select gender" size="large">
-                    <Select.Option value="Male">Male</Select.Option>
-                    <Select.Option value="Female">Female</Select.Option>
-                    <Select.Option value="Other">Other</Select.Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Form>
-        </div>
-      ),
-    },
-    {
-      title: 'Department',
-      icon: <Briefcase />,
-      content: (
-        <div style={{ maxWidth: 600, margin: '0 auto' }}>
-          <Alert
-            message="Department Assignment"
-            description="Select the staff's department for attendance tracking"
-            type="info"
-            showIcon
-            style={{ marginBottom: 20 }}
-          />
-          
-          <Form form={departmentForm} layout="vertical">
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <Form.Item 
-                  label="Department *" 
-                  name="department"
-                  rules={[{ required: true, message: 'Please select department' }]}
-                >
-                  <Select 
-                    placeholder="Select department" 
-                    size="large"
-                    options={departments.map(dept => ({
-                      value: dept.value,
-                      label: (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <div style={{
-                            width: '12px',
-                            height: '12px',
-                            borderRadius: '50%',
-                            backgroundColor: dept.color
-                          }} />
-                          <span>{dept.label}</span>
-                        </div>
-                      ),
-                    }))}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-
-            <div style={{ marginTop: 30 }}>
-              <Alert
-                type="info"
-                message="Nigeram Departments"
-                description={
-                  <div style={{ marginTop: '8px' }}>
-                    <Row gutter={[8, 8]}>
-                      {departments.map(dept => (
-                        <Col span={12} key={dept.value}>
-                          <Tag color={dept.color} style={{ width: '100%', textAlign: 'center' }}>
-                            {dept.label}
-                          </Tag>
-                        </Col>
-                      ))}
-                    </Row>
-                  </div>
-                }
-              />
-            </div>
-          </Form>
-        </div>
-      ),
-    },
-    {
-      title: 'Face Enrollment',
-      icon: <Camera />,
-      content: enrollmentComplete ? (
+  // Define getFaceEnrollmentContent function
+  const getFaceEnrollmentContent = () => {
+    if (enrollmentComplete) {
+      return (
         <div style={{ textAlign: 'center', padding: '40px 0' }}>
           {enrollmentResult?.success ? (
             <>
@@ -1001,327 +857,488 @@ const EnrollmentPage: React.FC = () => {
             </>
           )}
         </div>
-      ) : currentStep === 2 && isCameraActive ? (
-        <div style={{ 
-          height: '100%',
-          width: '100%',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'linear-gradient(135deg, #0a1a35 0%, #001529 100%)'
-        }}>
-          {/* Header */}
+      );
+    }
+    
+    if (currentStep === 2) {
+      if (isCameraActive) {
+        return (
           <div style={{ 
-            padding: '12px 16px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderBottom: '1px solid rgba(0, 150, 255, 0.1)'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{
-                width: 8,
-                height: 8,
-                borderRadius: '50%',
-                backgroundColor: faceModelsLoaded ? '#00ffaa' : '#ffaa00',
-                animation: faceModelsLoaded ? 'pulse 2s infinite' : 'none'
-              }} />
-              <Text style={{ fontSize: 12, color: '#aaccff' }}>
-                {faceModelsLoaded ? 'READY' : 'LOADING MODELS...'}
-              </Text>
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Text style={{ fontSize: 12, color: '#aaccff', fontWeight: 'bold' }}>
-                {staffData.name || 'STAFF NAME'}
-              </Text>
-              <Tag color="blue" style={{ fontSize: 11, padding: '2px 6px' }}>
-                {staffId}
-              </Tag>
-            </div>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Clock size={12} color="#aaccff" />
-              <Text style={{ fontSize: 12, color: '#aaccff' }}>
-                {dayjs().format('HH:mm')}
-              </Text>
-            </div>
-          </div>
-          
-          {/* Camera Container */}
-          <div style={{ 
-            flex: 1,
-            position: 'relative',
-            padding: '8px'
-          }}>
-            {isCameraActive && (
-              <div style={{
-                width: '100%',
-                height: '100%',
-                borderRadius: 8,
-                overflow: 'hidden',
-                border: '2px solid rgba(0, 150, 255, 0.2)',
-                boxShadow: '0 0 30px rgba(0, 150, 255, 0.1)'
-              }}>
-                <FaceEnrollmentCamera
-                  ref={cameraRef}
-                  staff={{
-                    id: staffData.staff_id || staffId,
-                    name: staffData.name,
-                    staff_id: staffData.staff_id || staffId,
-                    department: staffData.department
-                  }}
-                  onFaceDetectionUpdate={(status: any) => {
-                    if (status?.message) {
-                      setFaceDetectionTips(status.message);
-                    }
-                  }}
-                />
-              </div>
-            )}
-            
-            {/* Face Detection Tips Overlay */}
-            <div style={{
-              position: 'absolute',
-              bottom: 100,
-              left: 0,
-              right: 0,
-              textAlign: 'center',
-              zIndex: 50
-            }}>
-              <div style={{
-                display: 'inline-block',
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                padding: '8px 16px',
-                borderRadius: '20px',
-                border: '1px solid rgba(0, 150, 255, 0.3)',
-                backdropFilter: 'blur(10px)'
-              }}>
-                <Text style={{ 
-                  fontSize: 12, 
-                  color: '#00ffaa',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}>
-                  <Camera size={12} />
-                  {faceDetectionTips}
-                </Text>
-              </div>
-            </div>
-            
-           {/* Processing Overlay - Only show when loading AND enrollment is NOT complete */}
-{loading && !enrollmentComplete && (
-  <div style={{
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-    borderRadius: 8,
-    animation: enrollmentComplete ? 'fadeOut 0.3s forwards' : 'none'
-  }}>
-    <div style={{ textAlign: 'center' }}>
-      <Spin size="large" />
-      <div style={{ 
-        marginTop: 16, 
-        color: '#00ffaa',
-        fontSize: 14,
-        fontWeight: 'bold',
-        animation: 'pulse 1.5s infinite'
-      }}>
-        PROCESSING...
-      </div>
-    </div>
-  </div>
-)}
-          </div>
-          
-          {/* Footer with Action Buttons */}
-          <div style={{ 
-            padding: '12px 16px',
-            backgroundColor: 'rgba(0, 0, 0, 0.2)',
-            borderTop: '1px solid rgba(0, 150, 255, 0.1)',
+            height: '100%',
+            width: '100%',
             display: 'flex',
             flexDirection: 'column',
-            gap: '8px'
+            background: 'linear-gradient(135deg, #0a1a35 0%, #001529 100%)'
           }}>
+            {/* Header */}
             <div style={{ 
-              display: 'flex', 
+              padding: '12px 16px',
+              display: 'flex',
               justifyContent: 'space-between',
-              alignItems: 'center'
+              alignItems: 'center',
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderBottom: '1px solid rgba(0, 150, 255, 0.1)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <div style={{ 
-                  width: 6, 
-                  height: 6, 
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 8,
+                  height: 8,
                   borderRadius: '50%',
-                  backgroundColor: '#00ffaa',
-                  animation: 'pulse 1s infinite'
+                  backgroundColor: faceModelsLoaded ? '#00ffaa' : '#ffaa00',
+                  animation: faceModelsLoaded ? 'pulse 2s infinite' : 'none'
                 }} />
-                <Text style={{ fontSize: 11, color: '#aaccff' }}>
-                  CAPTURES: {captureCount}
+                <Text style={{ fontSize: 12, color: '#aaccff' }}>
+                  {faceModelsLoaded ? 'READY' : 'LOADING MODELS...'}
                 </Text>
               </div>
               
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <Text style={{ fontSize: 10, color: '#aaccff', opacity: 0.8 }}>
-                  Face Enrollment Tips:
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Text style={{ fontSize: 12, color: '#aaccff', fontWeight: 'bold' }}>
+                  {staffData.name || 'STAFF NAME'}
                 </Text>
-                <Text style={{ fontSize: 9, color: '#aaccff', textAlign: 'center' }}>
-                  • Good lighting • Face centered • No glasses/hats
-                </Text>
+                <Tag color="blue" style={{ fontSize: 11, padding: '2px 6px' }}>
+                  {staffId}
+                </Tag>
               </div>
               
-              <Button
-                size="small"
-                icon={<ArrowLeft size={12} />}
-                onClick={handleBack}
-                style={{
-                  backgroundColor: 'rgba(0, 150, 255, 0.1)',
-                  border: '1px solid rgba(0, 150, 255, 0.3)',
-                  color: '#00aaff',
-                  fontSize: 11,
-                  padding: '4px 8px'
-                }}
-              >
-                BACK
-              </Button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Clock size={12} color="#aaccff" />
+                <Text style={{ fontSize: 12, color: '#aaccff' }}>
+                  {dayjs().format('HH:mm')}
+                </Text>
+              </div>
             </div>
             
-            {/* Main Action Buttons */}
+            {/* Camera Container */}
             <div style={{ 
-              display: 'flex', 
-              justifyContent: 'center',
-              gap: '12px',
-              marginTop: '8px'
+              flex: 1,
+              position: 'relative',
+              padding: '8px'
             }}>
-              <Button
-                type="primary"
-                icon={<Camera size={14} />}
-                onClick={handleCapture}
-                loading={loading}
-                disabled={loading}
-                size="middle"
-                style={{
-                  backgroundColor: '#00aaff',
-                  border: 'none',
-                  boxShadow: '0 0 8px rgba(0, 170, 255, 0.3)',
-                  fontSize: 12,
-                  padding: '6px 16px',
-                  minWidth: '120px'
-                }}
-              >
-                CAPTURE NOW
-              </Button>
+              {isCameraActive && (
+                <div style={{
+                  width: '100%',
+                  height: '100%',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  border: '2px solid rgba(0, 150, 255, 0.2)',
+                  boxShadow: '0 0 30px rgba(0, 150, 255, 0.1)'
+                }}>
+                  <FaceEnrollmentCamera
+                    ref={cameraRef}
+                    staff={{
+                      id: staffData.staff_id || staffId,
+                      name: staffData.name,
+                      staff_id: staffData.staff_id || staffId,
+                      department: staffData.department
+                    }}
+                    onFaceDetectionUpdate={(status: any) => {
+                      if (status?.message) {
+                        setFaceDetectionTips(status.message);
+                      }
+                    }}
+                  />
+                </div>
+              )}
               
-              {capturedImage && (
+              {/* Face Detection Tips Overlay */}
+              <div style={{
+                position: 'absolute',
+                bottom: 100,
+                left: 0,
+                right: 0,
+                textAlign: 'center',
+                zIndex: 50
+              }}>
+                <div style={{
+                  display: 'inline-block',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  padding: '8px 16px',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(0, 150, 255, 0.3)',
+                  backdropFilter: 'blur(10px)'
+                }}>
+                  <Text style={{ 
+                    fontSize: 12, 
+                    color: '#00ffaa',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <Camera size={12} />
+                    {faceDetectionTips}
+                  </Text>
+                </div>
+              </div>
+              
+              {/* Processing Overlay */}
+              {loading && (
+                <div style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 100,
+                  borderRadius: 8
+                }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <Spin size="large" />
+                    <div style={{ 
+                      marginTop: 16, 
+                      color: '#00ffaa',
+                      fontSize: 14,
+                      fontWeight: 'bold',
+                      animation: 'pulse 1.5s infinite'
+                    }}>
+                      PROCESSING...
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Footer with Action Buttons */}
+            <div style={{ 
+              padding: '12px 16px',
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderTop: '1px solid rgba(0, 150, 255, 0.1)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px'
+            }}>
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ 
+                    width: 6, 
+                    height: 6, 
+                    borderRadius: '50%',
+                    backgroundColor: '#00ffaa',
+                    animation: 'pulse 1s infinite'
+                  }} />
+                  <Text style={{ fontSize: 11, color: '#aaccff' }}>
+                    CAPTURES: {captureCount}
+                  </Text>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 10, color: '#aaccff', opacity: 0.8 }}>
+                    Face Enrollment Tips:
+                  </Text>
+                  <Text style={{ fontSize: 9, color: '#aaccff', textAlign: 'center' }}>
+                    • Good lighting • Face centered • No glasses/hats
+                  </Text>
+                </div>
+                
                 <Button
-                  type="default"
-                  icon={<Download size={14} />}
-                  onClick={handleUseCapturedImage}
+                  size="small"
+                  icon={<ArrowLeft size={12} />}
+                  onClick={handleBack}
+                  style={{
+                    backgroundColor: 'rgba(0, 150, 255, 0.1)',
+                    border: '1px solid rgba(0, 150, 255, 0.3)',
+                    color: '#00aaff',
+                    fontSize: 11,
+                    padding: '4px 8px'
+                  }}
+                >
+                  BACK
+                </Button>
+              </div>
+              
+              {/* Main Action Buttons */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center',
+                gap: '12px',
+                marginTop: '8px'
+              }}>
+                <Button
+                  type="primary"
+                  icon={<Camera size={14} />}
+                  onClick={handleCapture}
                   loading={loading}
                   disabled={loading}
                   size="middle"
                   style={{
-                    backgroundColor: 'rgba(82, 196, 26, 0.1)',
-                    border: '1px solid rgba(82, 196, 26, 0.3)',
-                    color: '#52c41a',
+                    backgroundColor: '#00aaff',
+                    border: 'none',
+                    boxShadow: '0 0 8px rgba(0, 170, 255, 0.3)',
                     fontSize: 12,
                     padding: '6px 16px',
                     minWidth: '120px'
                   }}
                 >
-                  USE THIS PHOTO
+                  CAPTURE NOW
                 </Button>
-              )}
-              
-              {capturedImage && (
-                <Button
-                  icon={<RotateCw size={14} />}
-                  onClick={handleRetryCapture}
-                  disabled={loading}
-                  size="middle"
-                  style={{
-                    backgroundColor: 'rgba(255, 107, 107, 0.1)',
-                    border: '1px solid rgba(255, 107, 107, 0.3)',
-                    color: '#ff6b6b',
-                    fontSize: 12,
-                    padding: '6px 16px'
-                  }}
-                >
-                  RETRY
-                </Button>
-              )}
-            </div>
-          </div>
-          
-          {/* Captured Image Preview Modal */}
-          <Modal
-            title="Captured Image Preview"
-            open={showCapturedPreview}
-            onCancel={() => setShowCapturedPreview(false)}
-            footer={[
-              <Button key="retry" onClick={handleRetryCapture} disabled={loading}>
-                Retry Capture
-              </Button>,
-              <Button 
-                key="use" 
-                type="primary" 
-                onClick={handleUseCapturedImage}
-                loading={loading}
-                disabled={loading}
-              >
-                Use This Photo
-              </Button>
-            ]}
-          >
-            {capturedImage && (
-              <div style={{ textAlign: 'center' }}>
-                <img 
-                  src={capturedImage} 
-                  alt="Captured" 
-                  style={{ 
-                    maxWidth: '100%', 
-                    borderRadius: '8px',
-                    border: '2px solid #00aaff'
-                  }} 
-                />
-                <p style={{ marginTop: '12px', color: '#666' }}>
-                  Review the captured image. If it looks good, click "Use This Photo" to proceed with enrollment.
-                </p>
+                
+                {capturedImage && (
+                  <Button
+                    type="default"
+                    icon={<Download size={14} />}
+                    onClick={handleUseCapturedImage}
+                    loading={loading}
+                    disabled={loading}
+                    size="middle"
+                    style={{
+                      backgroundColor: 'rgba(82, 196, 26, 0.1)',
+                      border: '1px solid rgba(82, 196, 26, 0.3)',
+                      color: '#52c41a',
+                      fontSize: 12,
+                      padding: '6px 16px',
+                      minWidth: '120px'
+                    }}
+                  >
+                    USE THIS PHOTO
+                  </Button>
+                )}
+                
+                {capturedImage && (
+                  <Button
+                    icon={<RotateCw size={14} />}
+                    onClick={handleRetryCapture}
+                    disabled={loading}
+                    size="middle"
+                    style={{
+                      backgroundColor: 'rgba(255, 107, 107, 0.1)',
+                      border: '1px solid rgba(255, 107, 107, 0.3)',
+                      color: '#ff6b6b',
+                      fontSize: 12,
+                      padding: '6px 16px'
+                    }}
+                  >
+                    RETRY
+                  </Button>
+                )}
               </div>
-            )}
-          </Modal>
-        </div>
-      ) : (
-        <div style={{ 
-          height: '100%', 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          flexDirection: 'column',
-          gap: 16
-        }}>
-          <Spin size="large" />
-          <Text style={{ color: '#aaccff' }}>
-            Initializing face enrollment camera...
-          </Text>
-          <Button
-            type="primary"
-            size="small"
-            onClick={() => setIsCameraActive(true)}
-            style={{ marginTop: 8 }}
+            </div>
+            
+            {/* Captured Image Preview Modal */}
+            <Modal
+              title="Captured Image Preview"
+              open={showCapturedPreview}
+              onCancel={() => setShowCapturedPreview(false)}
+              footer={[
+                <Button key="retry" onClick={handleRetryCapture} disabled={loading}>
+                  Retry Capture
+                </Button>,
+                <Button 
+                  key="use" 
+                  type="primary" 
+                  onClick={handleUseCapturedImage}
+                  loading={loading}
+                  disabled={loading}
+                >
+                  Use This Photo
+                </Button>
+              ]}
+            >
+              {capturedImage && (
+                <div style={{ textAlign: 'center' }}>
+                  <img 
+                    src={capturedImage} 
+                    alt="Captured" 
+                    style={{ 
+                      maxWidth: '100%', 
+                      borderRadius: '8px',
+                      border: '2px solid #00aaff'
+                    }} 
+                  />
+                  <p style={{ marginTop: '12px', color: '#666' }}>
+                    Review the captured image. If it looks good, click "Use This Photo" to proceed with enrollment.
+                  </p>
+                </div>
+              )}
+            </Modal>
+          </div>
+        );
+      } else {
+        return (
+          <div style={{ 
+            height: '100%', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            flexDirection: 'column',
+            gap: 16
+          }}>
+            <Spin size="large" />
+            <Text style={{ color: '#aaccff' }}>
+              Initializing face enrollment camera...
+            </Text>
+            <Button
+              type="primary"
+              size="small"
+              onClick={() => setIsCameraActive(true)}
+              style={{ marginTop: 8 }}
+            >
+              Start Camera Manually
+            </Button>
+          </div>
+        );
+      }
+    }
+    
+    return <div></div>;
+  };
+
+  // Define stepItems AFTER getFaceEnrollmentContent
+  const stepItems = [
+    {
+      title: 'Basic Information',
+      icon: <User />,
+      content: (
+        <div>
+          <Alert
+            message="Staff Information"
+            description="Fill in the staff's basic details. Staff ID will be auto-generated."
+            type="info"
+            showIcon
+            style={{ marginBottom: 20 }}
+          />
+          
+          <Form
+            form={form}
+            layout="vertical"
+            style={{ maxWidth: 600, margin: '0 auto' }}
+            initialValues={{ gender: 'Male' }}
           >
-            Start Camera Manually
-          </Button>
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item
+                  label="Full Name *"
+                  name="name"
+                  rules={[
+                    { required: true, message: 'Please enter staff name', whitespace: true },
+                    { min: 3, message: 'Name must be at least 3 characters' }
+                  ]}
+                  validateTrigger={['onChange', 'onBlur']}
+                >
+                  <Input placeholder="Enter staff full name" size="large" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item label="Staff ID *" name="staff_id">
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <Input
+                      value={staffId}
+                      readOnly
+                      size="large"
+                      style={{ 
+                        flex: 1,
+                        textTransform: 'uppercase',
+                        backgroundColor: '#fafafa',
+                        cursor: 'not-allowed'
+                      }}
+                      prefix={<Users size={16} />}
+                    />
+                    <Button type="default" size="large" onClick={handleRegenerateStaffId}>
+                      Regenerate
+                    </Button>
+                  </div>
+                  <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+                    Staff ID is auto-generated. Click "Regenerate" for a new ID.
+                  </Text>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item label="Gender" name="gender">
+                  <Select placeholder="Select gender" size="large">
+                    <Select.Option value="Male">Male</Select.Option>
+                    <Select.Option value="Female">Female</Select.Option>
+                    <Select.Option value="Other">Other</Select.Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
         </div>
       ),
+    },
+    {
+      title: 'Department',
+      icon: <Briefcase />,
+      content: (
+        <div style={{ maxWidth: 600, margin: '0 auto' }}>
+          <Alert
+            message="Department Assignment"
+            description="Select the staff's department for attendance tracking"
+            type="info"
+            showIcon
+            style={{ marginBottom: 20 }}
+          />
+          
+          <Form form={departmentForm} layout="vertical">
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <Form.Item 
+                  label="Department *" 
+                  name="department"
+                  rules={[{ required: true, message: 'Please select department' }]}
+                >
+                  <Select 
+                    placeholder="Select department" 
+                    size="large"
+                    options={departments.map(dept => ({
+                      value: dept.value,
+                      label: (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{
+                            width: '12px',
+                            height: '12px',
+                            borderRadius: '50%',
+                            backgroundColor: dept.color
+                          }} />
+                          <span>{dept.label}</span>
+                        </div>
+                      ),
+                    }))}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <div style={{ marginTop: 30 }}>
+              <Alert
+                type="info"
+                message="Nigeram Departments"
+                description={
+                  <div style={{ marginTop: '8px' }}>
+                    <Row gutter={[8, 8]}>
+                      {departments.map(dept => (
+                        <Col span={12} key={dept.value}>
+                          <Tag color={dept.color} style={{ width: '100%', textAlign: 'center' }}>
+                            {dept.label}
+                          </Tag>
+                        </Col>
+                      ))}
+                    </Row>
+                  </div>
+                }
+              />
+            </div>
+          </Form>
+        </div>
+      ),
+    },
+    {
+      title: 'Face Enrollment',
+      icon: <Camera />,
+      content: getFaceEnrollmentContent(),
     },
   ];
 
