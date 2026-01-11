@@ -1,5 +1,5 @@
-// src/components/FaceEnrollmentCamera.tsx - FIXED VERSION
-import React, { useState, useRef, useEffect } from 'react';
+// src/components/FaceEnrollmentCamera.tsx - UPDATED VERSION
+import React, { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Typography, Progress, message } from 'antd';
 import { VideoOff, Camera, CheckCircle, Pause, Play } from 'lucide-react';
 
@@ -13,21 +13,25 @@ interface FaceEnrollmentCameraProps {
     staff_id: string;
     department: string;
   };
-  onEnrollmentComplete: (result: any) => void;
-  autoCapture?: boolean;           // Add this
-  captureInterval?: number;        // Add this
-  onFaceDetectionUpdate?: (status: any) => void;  // Add this
+  onEnrollmentComplete?: (result: any) => void;
+  autoCapture?: boolean;
+  captureInterval?: number;
+  onFaceDetectionUpdate?: (status: any) => void;
 }
-const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
+
+const FaceEnrollmentCamera = forwardRef(({
   staff,
-  onEnrollmentComplete
-}) => {
+  onEnrollmentComplete,
+  autoCapture = false,
+  captureInterval = 3000,
+  onFaceDetectionUpdate
+}: FaceEnrollmentCameraProps, ref) => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [captureCount, setCaptureCount] = useState(0);
-  const [autoScanActive, setAutoScanActive] = useState(true);
+  const [autoScanActive, setAutoScanActive] = useState(autoCapture);
   const [lastResult, setLastResult] = useState<any>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -35,6 +39,64 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const captureIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Expose captureImage method to parent
+  useImperativeHandle(ref, () => ({
+    captureImage: async () => {
+      console.log('Manual capture triggered via ref');
+      return new Promise((resolve) => {
+        if (!isCameraActive || isCapturing) {
+          console.log('Cannot capture: camera not active or already capturing');
+          resolve({
+            success: false,
+            message: 'Camera not ready'
+          });
+          return;
+        }
+
+        console.log('Starting manual capture via ref...');
+        setIsCapturing(true);
+        
+        // Capture image
+        const imageData = captureImage();
+        
+        if (!imageData) {
+          console.log('Capture failed, no image data');
+          setLastResult({
+            success: false,
+            message: 'Capture failed'
+          });
+          setIsCapturing(false);
+          resolve({
+            success: false,
+            message: 'Capture failed'
+          });
+          return;
+        }
+
+        // Simulate processing delay
+        setTimeout(() => {
+          const result = {
+            success: true,
+            photoUrl: imageData,
+            quality: 0.8,
+            faceScore: 0.7,
+            timestamp: new Date().toISOString(),
+            staff: staff,
+            captureCount: captureCount + 1
+          };
+          
+          console.log('Manual capture complete via ref');
+          setIsCapturing(false);
+          
+          // Update capture count
+          setCaptureCount(prev => prev + 1);
+          
+          resolve(result);
+        }, 1000);
+      });
+    }
+  }));
 
   // Start camera
   const startCamera = async () => {
@@ -63,8 +125,8 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
         
         videoRef.current.onloadedmetadata = () => {
           setIsCameraActive(true);
-          console.log('Camera loaded, starting auto-scan');
-          if (autoScanActive) {
+          console.log('Camera loaded, autoCapture:', autoCapture);
+          if (autoCapture && autoScanActive) {
             startAutoScan();
           }
         };
@@ -90,13 +152,13 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     
     setAutoScanActive(true);
     
-    console.log('Starting auto-scan interval');
+    console.log('Starting auto-scan interval:', captureInterval);
     captureIntervalRef.current = setInterval(() => {
       if (isCameraActive && !isCapturing) {
         console.log('Auto-scan triggering capture');
         handleCapture();
       }
-    }, 3000); // Every 3 seconds
+    }, captureInterval);
   };
 
   // Stop auto-scan
@@ -109,7 +171,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     console.log('Auto-scan stopped');
   };
 
-  // Capture image
+  // Capture image helper
   const captureImage = (): string | null => {
     if (!isCameraActive || !videoRef.current || !canvasRef.current) {
       console.log('Cannot capture: camera not ready');
@@ -138,14 +200,14 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
     return imageData;
   };
 
-  // Handle capture
+  // Handle auto capture
   const handleCapture = () => {
     if (!isCameraActive || isCapturing) {
       console.log('Cannot capture: camera not active or already capturing');
       return;
     }
     
-    console.log('Starting capture...');
+    console.log('Starting auto capture...');
     setIsCapturing(true);
     setCaptureCount(prev => prev + 1);
     
@@ -180,12 +242,14 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           const result = {
             success: true,
             photoUrl: imageData,
+            quality: 0.8,
+            faceScore: 0.7,
             timestamp: new Date().toISOString(),
             staff: staff,
             captureCount: captureCount + 1
           };
           
-          console.log('Capture complete, calling onEnrollmentComplete');
+          console.log('Auto capture complete, calling onEnrollmentComplete');
           
           // Show success message
           setLastResult({
@@ -196,9 +260,11 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           
           // Call the parent callback after a short delay
           setTimeout(() => {
-            console.log('Calling onEnrollmentComplete with result:', result);
-            onEnrollmentComplete(result);
-            setIsCapturing(false);
+            if (onEnrollmentComplete) {
+              console.log('Calling onEnrollmentComplete with result:', result);
+              onEnrollmentComplete(result);
+              setIsCapturing(false);
+            }
             
             // Clear success message after 1.5 seconds
             setTimeout(() => {
@@ -215,12 +281,86 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
 
   // Manual capture button
   const handleManualCapture = () => {
-    console.log('Manual capture triggered');
+    console.log('Manual capture triggered via button');
     if (!isCameraActive) {
       message.error('Camera not ready');
       return;
     }
-    handleCapture();
+    
+    if (isCapturing) {
+      message.warning('Already capturing, please wait');
+      return;
+    }
+    
+    setIsCapturing(true);
+    setCaptureCount(prev => prev + 1);
+    
+    // Clear any existing progress interval
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    
+    // Capture image
+    const imageData = captureImage();
+    
+    if (!imageData) {
+      console.log('Capture failed, no image data');
+      setLastResult({
+        success: false,
+        message: 'Capture failed'
+      });
+      setIsCapturing(false);
+      return;
+    }
+    
+    // Show progress animation
+    setProgress(0);
+    progressIntervalRef.current = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+          }
+          
+          // Success result
+          const result = {
+            success: true,
+            photoUrl: imageData,
+            quality: 0.8,
+            faceScore: 0.7,
+            timestamp: new Date().toISOString(),
+            staff: staff,
+            captureCount: captureCount + 1
+          };
+          
+          console.log('Manual capture complete, calling onEnrollmentComplete');
+          
+          // Show success message
+          setLastResult({
+            success: true,
+            message: 'Face Captured Successfully!',
+            temporary: true
+          });
+          
+          // Call the parent callback after a short delay
+          setTimeout(() => {
+            if (onEnrollmentComplete) {
+              console.log('Calling onEnrollmentComplete with result:', result);
+              onEnrollmentComplete(result);
+              setIsCapturing(false);
+            }
+            
+            // Clear success message after 1.5 seconds
+            setTimeout(() => {
+              setLastResult(null);
+            }, 1500);
+          }, 1000);
+          
+          return 100;
+        }
+        return prev + 20; // Faster progress (5 steps to 100)
+      });
+    }, 100);
   };
 
   // Toggle auto-scan
@@ -251,6 +391,17 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
       }
     };
   }, []);
+
+  // Update auto-scan based on autoCapture prop
+  useEffect(() => {
+    if (isCameraActive) {
+      if (autoCapture && !autoScanActive) {
+        startAutoScan();
+      } else if (!autoCapture && autoScanActive) {
+        stopAutoScan();
+      }
+    }
+  }, [autoCapture, isCameraActive]);
 
   return (
     <div style={{
@@ -509,7 +660,7 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
           fontStyle: 'italic'
         }}>
           {autoScanActive 
-            ? 'Auto-scan active: Capturing every 3 seconds' 
+            ? `Auto-scan active: Capturing every ${captureInterval / 1000} seconds` 
             : 'Click "Capture Now" to manually capture'}
         </Text>
       </div>
@@ -532,6 +683,6 @@ const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
       </style>
     </div>
   );
-};
+});
 
 export default FaceEnrollmentCamera;
