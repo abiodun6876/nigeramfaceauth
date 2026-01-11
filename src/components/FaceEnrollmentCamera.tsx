@@ -5,6 +5,7 @@ import { VideoOff, Camera, CheckCircle, Pause, Play } from 'lucide-react';
 
 const { Text, Title } = Typography;
 
+// In your FaceEnrollmentCamera.tsx component file
 interface FaceEnrollmentCameraProps {
   staff: {
     id: string;
@@ -13,8 +14,10 @@ interface FaceEnrollmentCameraProps {
     department: string;
   };
   onEnrollmentComplete: (result: any) => void;
+  autoCapture?: boolean;           // Add this
+  captureInterval?: number;        // Add this
+  onFaceDetectionUpdate?: (status: any) => void;  // Add this
 }
-
 const FaceEnrollmentCamera: React.FC<FaceEnrollmentCameraProps> = ({
   staff,
   onEnrollmentComplete
