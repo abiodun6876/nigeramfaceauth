@@ -1,7 +1,7 @@
-// src/utils/imageStorage.ts
+// src/utils/imageStorage.ts - UPDATED
 export interface StoredImage {
   id: string;
-  studentId: string;
+  staffId: string; // Changed from studentId
   imageData: string; // Base64 encoded
   timestamp: number;
   type: 'enrollment' | 'verification' | 'attendance';
@@ -15,7 +15,7 @@ export interface StoredImage {
 class ImageStorage {
   private readonly DB_NAME = 'face_images_db';
   private readonly STORE_NAME = 'images';
-  private readonly MAX_IMAGES_PER_STUDENT = 10;
+  private readonly MAX_IMAGES_PER_STAFF = 10; // Changed from student to staff
   private readonly MAX_TOTAL_IMAGES = 1000;
 
   // Initialize IndexedDB
@@ -31,7 +31,7 @@ class ImageStorage {
         // Create object store if it doesn't exist
         if (!db.objectStoreNames.contains(this.STORE_NAME)) {
           const store = db.createObjectStore(this.STORE_NAME, { keyPath: 'id' });
-          store.createIndex('studentId', 'studentId', { unique: false });
+          store.createIndex('staffId', 'staffId', { unique: false }); // Changed
           store.createIndex('timestamp', 'timestamp', { unique: false });
         }
       };
@@ -52,11 +52,11 @@ class ImageStorage {
       
       const image: StoredImage = {
         ...imageData,
-        id: `${imageData.studentId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        id: `${imageData.staffId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` // Changed
       };
 
-      // Check if we need to cleanup old images for this student
-      this.cleanupOldImages(store, image.studentId);
+      // Check if we need to cleanup old images for this staff member
+      this.cleanupOldImages(store, image.staffId); // Changed
 
       const request = store.add(image);
       
@@ -69,20 +69,20 @@ class ImageStorage {
     });
   }
 
-  // Cleanup old images for a student
-  private async cleanupOldImages(store: IDBObjectStore, studentId: string): Promise<void> {
-    const index = store.index('studentId');
-    const request = index.getAll(studentId);
+  // Cleanup old images for a staff member
+  private async cleanupOldImages(store: IDBObjectStore, staffId: string): Promise<void> { // Changed
+    const index = store.index('staffId'); // Changed
+    const request = index.getAll(staffId); // Changed
     
     request.onsuccess = () => {
       const images = request.result as StoredImage[];
       
-      if (images.length > this.MAX_IMAGES_PER_STUDENT) {
+      if (images.length > this.MAX_IMAGES_PER_STAFF) { // Changed
         // Sort by timestamp (oldest first)
         images.sort((a, b) => a.timestamp - b.timestamp);
         
         // Delete oldest images beyond limit
-        const imagesToDelete = images.slice(0, images.length - this.MAX_IMAGES_PER_STUDENT);
+        const imagesToDelete = images.slice(0, images.length - this.MAX_IMAGES_PER_STAFF); // Changed
         
         imagesToDelete.forEach(image => {
           store.delete(image.id);
@@ -91,16 +91,16 @@ class ImageStorage {
     };
   }
 
-  // Get images for a student
-  async getStudentImages(studentId: string): Promise<StoredImage[]> {
+  // Get images for a staff member
+  async getStaffImages(staffId: string): Promise<StoredImage[]> { // Changed method name
     const db = await this.getDB();
     
     return new Promise((resolve, reject) => {
       const transaction = db.transaction([this.STORE_NAME], 'readonly');
       const store = transaction.objectStore(this.STORE_NAME);
-      const index = store.index('studentId');
+      const index = store.index('staffId'); // Changed
       
-      const request = index.getAll(studentId);
+      const request = index.getAll(staffId); // Changed
       
       request.onsuccess = () => {
         const images = request.result as StoredImage[];
@@ -143,9 +143,9 @@ class ImageStorage {
     });
   }
 
-  // Delete all images for a student
-  async deleteStudentImages(studentId: string): Promise<void> {
-    const images = await this.getStudentImages(studentId);
+  // Delete all images for a staff member
+  async deleteStaffImages(staffId: string): Promise<void> { // Changed method name
+    const images = await this.getStaffImages(staffId); // Changed
     
     await Promise.all(images.map(image => this.deleteImage(image.id)));
   }
@@ -153,7 +153,7 @@ class ImageStorage {
   // Get storage statistics
   async getStorageStats(): Promise<{
     totalImages: number;
-    studentsWithImages: number;
+    staffWithImages: number; // Changed from studentsWithImages
     totalSize: number;
   }> {
     const db = await this.getDB();
@@ -166,7 +166,7 @@ class ImageStorage {
       
       request.onsuccess = () => {
         const images = request.result as StoredImage[];
-        const studentIds = new Set(images.map(img => img.studentId));
+        const staffIds = new Set(images.map(img => img.staffId)); // Changed
         
         // Estimate size (rough estimate: each Base64 character ≈ 0.75 bytes)
         const totalSize = images.reduce((acc, img) => 
@@ -175,7 +175,7 @@ class ImageStorage {
         
         resolve({
           totalImages: images.length,
-          studentsWithImages: studentIds.size,
+          staffWithImages: staffIds.size, // Changed
           totalSize: Math.round(totalSize / 1024) // Convert to KB
         });
       };

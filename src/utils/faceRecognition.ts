@@ -370,6 +370,28 @@ class FaceRecognition {
       return null;
     }
   }
+
+
+  // In FaceRecognition class, update the syncLocalEmbeddingsToDatabase method:
+async syncLocalEmbeddingsToDatabase(): Promise<Array<{
+  staffId: string;
+  descriptor: number[];
+}>> {
+  const localEmbeddings = this.getEmbeddingsFromLocal();
+  const syncedEmbeddings: Array<{staffId: string; descriptor: number[]}> = [];
+  
+  for (const embedding of localEmbeddings) {
+    try {
+      // Use staffId, not studentId
+      await this.updateFaceEmbedding(embedding.staffId, new Float32Array(embedding.descriptor));
+      syncedEmbeddings.push(embedding);
+    } catch (error) {
+      console.error(`Failed to sync embedding for staff ${embedding.staffId}:`, error);
+    }
+  }
+    
+  return syncedEmbeddings;
+}
   
   clearLocalEmbeddings(): void {
     localStorage.removeItem(this.EMBEDDINGS_KEY);

@@ -26,9 +26,9 @@ class SyncService {
   }
 
   // Save attendance to local storage (for offline)
-  saveAttendanceLocally(studentId: string, eventId?: string): void {
+  saveAttendanceLocally(staffId: string, eventId?: string): void { // Changed studentId to staffId
     const attendance = {
-      studentId,
+      staffId, // Changed from studentId
       eventId,
       timestamp: new Date().toISOString(),
       status: 'pending_sync'
@@ -70,9 +70,9 @@ class SyncService {
       for (const record of pendingArray) {
         try {
           const { error } = await supabase
-            .from('attendance_records')
+            .from('staff_attendance') // Changed from 'attendance_records'
             .insert({
-              student_id: record.studentId,
+              staff_id: record.staffId, // Changed from student_id
               event_id: record.eventId,
               timestamp: record.timestamp,
               status: 'present',
@@ -92,7 +92,7 @@ class SyncService {
 
       // Update local storage
       const remaining = pendingArray.filter((r: any) => 
-        !synced.find(s => s.timestamp === r.timestamp && s.studentId === r.studentId)
+        !synced.find(s => s.timestamp === r.timestamp && s.staffId === r.staffId) // Changed from studentId
       );
 
       localStorage.setItem(this.PENDING_UPLOADS_KEY, JSON.stringify(remaining));
@@ -133,22 +133,22 @@ class SyncService {
       
       for (const embedding of embeddings) {
         try {
+          // FIXED: Use staff table and staff_id field
           const { error } = await supabase
-            .from('students')
+            .from('staff') // Changed from 'students'
             .update({
               face_embedding: embedding.descriptor,
               last_face_update: new Date().toISOString()
             })
-            .eq('id', embedding.studentId)
-            .eq('matric_number', embedding.studentId);
+            .eq('staff_id', embedding.staffId); // Changed from studentId and id/matric_number
 
           if (error) {
-            result.errors.push(`Student ${embedding.studentId}: ${error.message}`);
+            result.errors.push(`Staff ${embedding.staffId}: ${error.message}`); // Changed from Student
           } else {
             result.syncedCount++;
           }
         } catch (error: any) {
-          result.errors.push(`Student ${embedding.studentId}: ${error.message}`);
+          result.errors.push(`Staff ${embedding.staffId}: ${error.message}`); // Changed from Student
         }
       }
 
