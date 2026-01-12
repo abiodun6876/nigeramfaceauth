@@ -695,103 +695,206 @@ class FaceRecognition {
   }
 
   private parseEmbeddingFromDatabase(embeddingData: any): Float32Array | null {
-    try {
-      console.log('📱 Parsing embedding from database...');
-      
-      if (!embeddingData) {
-        console.log('❌ No embedding data');
-        return null;
-      }
-      
-      let numbers: number[] = [];
-      
-      // Handle the specific format from your data
-      // "[\"-0.03632645308971405\", \"-0.5184420943260193\", ...]"
-      if (typeof embeddingData === 'string') {
-        console.log('Processing string embedding...');
-        
-        if (embeddingData.startsWith('[') && embeddingData.endsWith(']')) {
-          try {
-            // For JSON string format: ["-0.0363", "-0.5184", ...]
-            const cleaned = embeddingData
-              .replace(/[\[\]"]/g, '')  // Remove brackets and quotes
-              .replace(/\s+/g, '');     // Remove whitespace
-            
-            numbers = cleaned.split(',').map(num => {
-              const parsed = parseFloat(num);
-              if (isNaN(parsed)) {
-                console.warn(`Invalid number in embedding: ${num}`);
-                return 0;
-              }
-              return parsed;
-            });
-            
-            console.log(`Parsed ${numbers.length} numbers from JSON string`);
-          } catch (parseError) {
-            console.warn('String parse failed:', parseError);
-            return null;
-          }
-        } else if (embeddingData.includes(',')) {
-          // Plain comma-separated values
-          numbers = embeddingData.split(',').map(num => {
-            const trimmed = num.trim();
-            const parsed = parseFloat(trimmed);
-            return isNaN(parsed) ? 0 : parsed;
-          });
-          console.log(`Parsed ${numbers.length} numbers from CSV string`);
-        } else {
-          console.warn('Unknown string format');
-          return null;
-        }
-      } else if (Array.isArray(embeddingData)) {
-        // Already an array
-        numbers = embeddingData.map(item => {
-          if (typeof item === 'string') {
-            return parseFloat(item) || 0;
-          }
-          return Number(item) || 0;
-        });
-        console.log(`Using existing array with ${numbers.length} items`);
-      } else {
-        console.warn('Unknown embedding data type:', typeof embeddingData);
-        return null;
-      }
-      
-      // Mobile optimization: validate length
-      if (numbers.length !== 128) {
-        console.warn(`⚠️ Length mismatch: ${numbers.length} vs 128`);
-        
-        // Try to fix: if longer, truncate; if shorter, pad with zeros
-        if (numbers.length > 128) {
-          numbers = numbers.slice(0, 128);
-          console.log('Trimmed to 128 values');
-        } else if (numbers.length < 128) {
-          console.log('Padding with zeros');
-          while (numbers.length < 128) {
-            numbers.push(0);
-          }
-        }
-      }
-      
-      // Validate all numbers are finite
-      const validCount = numbers.filter(n => isFinite(n)).length;
-      if (validCount !== numbers.length) {
-        console.warn(`Contains ${numbers.length - validCount} invalid values`);
-        // Replace invalid with 0
-        numbers = numbers.map(n => isFinite(n) ? n : 0);
-      }
-      
-      console.log(`✅ Successfully parsed ${numbers.length} values`);
-      console.log(`📊 Sample: ${numbers.slice(0, 3).map(v => v.toFixed(4)).join(', ')}...`);
-      
-      return new Float32Array(numbers);
-      
-    } catch (error) {
-      console.error('❌ Error parsing embedding:', error);
+  try {
+    console.log('📱 Parsing embedding from database...');
+    
+    if (!embeddingData) {
+      console.log('❌ No embedding data');
       return null;
     }
+    
+    let numbers: number[] = [];
+    
+    // Debug what we're actually getting
+    console.log('Embedding data type:', typeof embeddingData);
+    console.log('Is Array?', Array.isArray(embeddingData));
+    console.log('Data sample:', typeof embeddingData === 'string' 
+      ? embeddingData.substring(0, 200) + '...' 
+      : embeddingData);
+    
+    // Case 1: Already an array (Supabase client might parse it)
+    if (Array.isArray(embeddingData)) {
+      console.log(`Processing array with ${embeddingData.length} items`);
+      
+      numbers = embeddingData.map((item, index) => {
+        if (typeof item === 'string') {
+          const num = parseFloat(item);
+          if (isNaN(num)) {
+            console.warn(`Invalid number at index ${index}: ${item}`);
+            return 0;
+          }
+          return num;
+        } else if (typeof item === 'number') {
+          return item;
+        } else {
+          console.warn(`Unexpected type at index ${index}: ${typeof item}`);
+          return 0;
+        }
+      });
+      
+      console.log(`✅ Converted ${numbers.length} array items to numbers`);
+      
+    } 
+    // Case 2: It's a JSON string (might happen in some cases)
+    else if (typeof embeddingData === 'string') {
+      console.log('Processing string... trying to parse as JSON');
+      
+      try {
+        // Try to parse as JSON
+        const parsed = JSON.parse(embeddingData);
+        
+        if (Array.isArray(parsed)) {
+          numbers = parsed.map((item, index) => {
+            if (typeof item === 'string') {
+              const num = parseFloat(item);
+              return isNaN(num) ? 0 : num;
+            }
+            return Number(item) || 0;
+          });
+          console.log(`Parsed ${numbers.length} numbers from JSON string`);
+        } else {
+          console.warn('String is not a valid JSON array');
+          return null;
+        }
+      } catch (jsonError) {
+        console.warn('JSON parse failed, trying manual parse:', jsonError);
+        
+        // Manual parse: remove brackets and quotes, then split
+        // Format: "["-0.4244951009750366", "-0.20116561651229858", ...]"
+        const cleanStr = embeddingData
+          .replace(/^["']*\[["']*/, '')  // Remove opening quotes and bracket
+          .replace(/["']*\]["']*$/, '')  // Remove closing quotes and bracket
+          .replace(/"\s*,\s*"/g, ',')    // Clean up between items
+          .replace(/"/g, '');            // Remove any remaining quotes
+        
+        if (cleanStr.includes(',')) {
+          numbers = cleanStr.split(',').map((num, index) => {
+            const parsed = parseFloat(num.trim());
+            if (isNaN(parsed)) {
+              console.warn(`Invalid number in CSV at index ${index}: ${num}`);
+              return 0;
+            }
+            return parsed;
+          });
+          console.log(`Parsed ${numbers.length} numbers from cleaned string`);
+        } else {
+          console.warn('String does not contain commas after cleaning');
+          return null;
+        }
+      }
+    } else {
+      console.warn('Unknown embedding data type:', typeof embeddingData);
+      return null;
+    }
+    
+    // Validate we have the right number of values (should be 128 for face embeddings)
+    if (numbers.length !== 128) {
+      console.warn(`⚠️ Length mismatch: ${numbers.length} vs 128`);
+      console.warn('First 10 values:', numbers.slice(0, 10));
+      
+      if (numbers.length > 128) {
+        numbers = numbers.slice(0, 128);
+        console.log('Trimmed to 128 values');
+      } else if (numbers.length < 128) {
+        console.log('Padding with zeros');
+        while (numbers.length < 128) {
+          numbers.push(0);
+        }
+      }
+    }
+    
+    // Validate numbers are finite
+    const invalidCount = numbers.filter(n => !isFinite(n)).length;
+    if (invalidCount > 0) {
+      console.warn(`Contains ${invalidCount} invalid (NaN/Infinity) values`);
+      numbers = numbers.map(n => isFinite(n) ? n : 0);
+    }
+    
+    // Check if all values are 0 (parsing failed)
+    const nonZeroCount = numbers.filter(n => Math.abs(n) > 0.0001).length;
+    if (nonZeroCount === 0) {
+      console.warn('⚠️ All values are near zero - parsing likely failed');
+      return null;
+    }
+    
+    // Check value ranges (face embeddings are typically between -1 and 1)
+    const min = Math.min(...numbers);
+    const max = Math.max(...numbers);
+    
+    console.log(`✅ Successfully parsed ${numbers.length} values`);
+    console.log(`📊 Stats - Min: ${min.toFixed(4)}, Max: ${max.toFixed(4)}, Avg: ${(numbers.reduce((a, b) => a + b, 0) / numbers.length).toFixed(4)}`);
+    console.log(`📊 Non-zero values: ${nonZeroCount}/${numbers.length}`);
+    console.log(`📊 Sample: ${numbers.slice(0, 5).map(v => v.toFixed(4)).join(', ')}...`);
+    
+    return new Float32Array(numbers);
+    
+  } catch (error) {
+    console.error('❌ Error parsing embedding:', error);
+    return null;
   }
-  
+}
+  // Add this to your faceRecognition.ts
+public async testFaceDetectionOnly() {
+  try {
+    console.group('🧪 Testing Face Detection Only');
+    
+    if (!this.modelsLoaded) {
+      await this.loadModels();
+    }
+    
+    // Create a test image with a face-like shape
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 400;
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) {
+      console.log('❌ Could not create canvas context');
+      console.groupEnd();
+      return;
+    }
+    
+    // Draw a simple face
+    ctx.fillStyle = '#ffcc99'; // Skin tone
+    ctx.beginPath();
+    ctx.ellipse(200, 200, 100, 120, 0, 0, Math.PI * 2); // Face oval
+    ctx.fill();
+    
+    // Draw eyes
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(160, 160, 15, 20, 0, 0, Math.PI * 2); // Left eye
+    ctx.ellipse(240, 160, 15, 20, 0, 0, Math.PI * 2); // Right eye
+    ctx.fill();
+    
+    // Draw mouth
+    ctx.beginPath();
+    ctx.arc(200, 250, 30, 0, Math.PI, false); // Smile
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    
+    const testImage = canvas.toDataURL('image/jpeg');
+    console.log('Created test face image');
+    
+    // Test extraction
+    console.log('Testing face extraction...');
+    const descriptor = await this.extractFaceDescriptor(testImage);
+    
+    if (descriptor) {
+      console.log(`✅ Face detected and descriptor extracted!`);
+      console.log(`   Descriptor length: ${descriptor.length}`);
+      console.log(`   Sample values: ${Array.from(descriptor.slice(0, 5)).map(v => v.toFixed(4)).join(', ')}...`);
+    } else {
+      console.log('❌ No face detected in test image');
+    }
+    
+    console.groupEnd();
+    
+  } catch (error) {
+    console.error('Test error:', error);
+    console.groupEnd();
+  }
+}
   async testEmbeddingParsing() {
     try {
       console.group('🧪 Testing Embedding Parsing');
